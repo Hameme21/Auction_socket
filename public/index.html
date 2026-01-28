@@ -33,6 +33,7 @@
     button.red{background:#ef4444;}
     button.yellow{background:#f59e0b;}
     button.blue{background:#3b82f6;}
+    button.purple{background:#9333ea;}
     button.small{padding: 5px 10px; font-size: 11px;}
     
     input, select { background:var(--glass); border:1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; width: 100%; margin-bottom: 10px; }
@@ -50,7 +51,8 @@
     .price{font-size:18px;font-weight:700;}
     
     /* --- Team Settings Grid --- */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    /* Updated grid columns to include Impact Purse */
+    .team-config-row { display: grid; grid-template-columns: 0.4fr 1.2fr 1fr 0.8fr 0.8fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
     .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
     /* --- Scoreboard --- */
@@ -64,6 +66,7 @@
     /* --- Toast --- */
     #toastContainer {position: fixed; top: 20px; right: 20px; z-index: 6000; display: flex; flex-direction: column; gap: 10px;}
     .toast {background: #1e293b; color: #fff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #7c3aed; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;}
+    .toast.impact { border-left-color: #d946ef; background: #2e1065; }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
     /* --- Hammer Animation --- */
@@ -148,6 +151,15 @@
         <div id="soldActionDetails" style="margin-bottom:15px; color:#fbbf24; font-weight:bold;"></div>
         <label>Select Winning Team</label>
         <select id="soldActionTeam" style="margin-bottom:15px;"></select>
+        
+        <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:6px; margin-bottom:15px; display:flex; align-items:center;">
+            <input type="checkbox" id="soldUseImpact" style="width:auto; margin:0 10px 0 0;">
+            <div>
+                <strong style="display:block; font-size:13px;">Use Impact Purse?</strong>
+                <span style="font-size:11px; color:var(--muted)">Deducts from Impact Balance (Limit 1 per team)</span>
+            </div>
+        </div>
+
         <div class="flex" style="justify-content:flex-end">
           <button id="btnCancelSold" class="ghost">Cancel</button>
           <button id="btnConfirmSold" class="green">Confirm Sale</button>
@@ -184,7 +196,7 @@
             <div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
               <label>Team Settings & Passwords</label>
               <div class="team-config-row team-config-header">
-                <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Reset</span> <span>Del</span>
+                <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Impact</span> <span>Action</span>
               </div>
               <div id="teamsConfigContainer"></div>
               <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px; width:100%">+ Add Team Slot</button>
@@ -227,6 +239,7 @@
         <h1 style="color:#ffd166; font-size:40px; margin:0;">SOLD!</h1>
         <h2 id="animPlayer">Player</h2>
         <p>Sold to <strong id="animTeam">Team</strong> for <span id="animPrice">0</span></p>
+        <div id="animImpactTag" class="hidden" style="color:#d946ef; font-weight:bold; margin-top:5px;">(IMPACT PLAYER)</div>
       </div>
     </div>
 
@@ -261,7 +274,6 @@
     const btnExportAdmin = document.getElementById('btnExportAdmin');
     const btnExportTeam = document.getElementById('btnExportTeam');
 
-    // Hammer Reset Listener
     if(hammer) {
       hammer.addEventListener('animationend', () => {
         hammer.classList.remove('swing');
@@ -302,7 +314,6 @@
         socket.emit('participant:connect', h);
     }
 
-    // Portal Responses
     socket.on('auth:portal_error', (msg) => document.getElementById('portalMsg').textContent = msg);
     socket.on('auth:portal_success', (data) => {
         const el = document.getElementById('portalMsg');
@@ -310,7 +321,6 @@
         el.textContent = data.msg;
     });
 
-    // Manager Login Success
     socket.on('manager:logged_in', (data) => {
         CURRENT_USER.hostId = data.username;
         CURRENT_USER.role = 'admin';
@@ -321,7 +331,6 @@
         renderAll();
     });
 
-    // Participant Connect Success (Go to Step 2)
     socket.on('init:teams_available', (data) => {
         CURRENT_USER.hostId = data.hostId;
         const sel = document.getElementById('loginTeamId');
@@ -332,7 +341,6 @@
         teamAuthOverlay.classList.remove('hidden');
     });
 
-    // --- TEAM AUTH LOGIC ---
     function toggleTeamPass() {
         const role = document.getElementById('loginRole').value;
         const isTeam = role === 'team';
@@ -344,7 +352,6 @@
         const role = document.getElementById('loginRole').value;
         const teamId = document.getElementById('loginTeamId').value;
         const pass = document.getElementById('loginPass').value;
-        
         socket.emit('team:login', { hostId: CURRENT_USER.hostId, teamId, password: pass, role });
     }
 
@@ -361,7 +368,7 @@
     });
 
 
-    // --- MAIN APP LOGIC (Preserved from Uploaded File) ---
+    // --- MAIN APP LOGIC ---
 
     socket.on('state:updated', (newState) => {
       STATE = newState;
@@ -382,7 +389,7 @@
     });
 
     socket.on('player:sold', (data) => {
-      const { category, name, price, teamId } = data.payload;
+      const { category, name, price, teamId, useImpact } = data.payload;
       STATE.teams = data.teams;
       
       const el = getPlayerEl(category, name);
@@ -390,13 +397,16 @@
         el.classList.add('sold');
         el.classList.remove('has-bid');
         const actionDiv = el.querySelector('.actions');
-        if(actionDiv) actionDiv.innerHTML = `<div class="small" style="color:#7c3aed">Sold to ${teamId}</div>`;
+        if(actionDiv) actionDiv.innerHTML = `<div class="small" style="color:${useImpact ? '#d946ef' : '#7c3aed'}">Sold to ${teamId} ${useImpact ? '(IMPACT)' : ''}</div>`;
       }
       
       const teamName = STATE.teams.find(t=>t.id===teamId)?.name || teamId;
       document.getElementById('animPlayer').textContent = name;
       document.getElementById('animTeam').textContent = teamName;
       document.getElementById('animPrice').textContent = price;
+      
+      if(useImpact) document.getElementById('animImpactTag').classList.remove('hidden');
+      else document.getElementById('animImpactTag').classList.add('hidden');
       
       const animOverlay = document.getElementById('soldAnimationOverlay');
       animOverlay.classList.remove('hidden');
@@ -416,11 +426,11 @@
       setTimeout(() => animOverlay.classList.add('hidden'), 3500);
       renderScoreboard();
       renderMyTeam();
-      log(`SOLD: ${name} to ${teamName} for ${price}`);
+      log(`SOLD: ${name} to ${teamName} for ${price} ${useImpact?'[IMPACT]':''}`);
     });
 
     socket.on('admin:toast', (data) => {
-      if(CURRENT_USER.role === 'admin') showToast(data.msg);
+      if(CURRENT_USER.role === 'admin') showToast(data.msg, data.type);
     });
 
     socket.on('players:load', (d) => renderCategoryPlayers(d.category, d.players));
@@ -460,7 +470,7 @@
       STATE.teams.forEach((t) => addTeamInputRow(t));
     }
 
-    function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500}) {
+    function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500, impactPurse:0}) {
       const row = document.createElement('div');
       row.className = 'team-config-row';
       row.innerHTML = `
@@ -468,8 +478,11 @@
         <input class="t-name" value="${teamData.name || ''}" placeholder="Name">
         <input class="t-pass" value="${teamData.password || ''}" placeholder="Pass">
         <input class="t-purse" type="number" value="${teamData.purse}" placeholder="Purse">
-        <button class="yellow small" title="Reset Team" onclick="resetTeam('${teamData.id}')">↺</button>
-        <button class="red small" title="Delete Team" onclick="this.parentElement.remove()">X</button>
+        <input class="t-impact" type="number" value="${teamData.impactPurse || 0}" placeholder="Impact">
+        <div style="display:flex; gap:2px">
+            <button class="yellow small" title="Reset Team" onclick="resetTeam('${teamData.id}')">↺</button>
+            <button class="red small" title="Delete Team" onclick="this.parentElement.parentElement.remove()">X</button>
+        </div>
       `;
       teamsConfigContainer.appendChild(row);
     }
@@ -506,13 +519,6 @@
           <div class="players" id="playersList-${cat.id}"></div>
         `;
         categoriesContainer.appendChild(div);
-
-        if(CURRENT_USER.role === 'admin') {
-          const ta = div.querySelector('textarea');
-          ta.addEventListener('input', () => {
-             // Local preview logic if desired, or just wait for save
-          });
-        }
       });
     }
 
@@ -527,10 +533,13 @@
       players.forEach(p => {
         let isSold = false;
         let soldTo = null;
+        let isImpactSold = false;
+
         STATE.teams.forEach(t => { 
           if(t.purchases && t.purchases[catId] === p.name) {
             isSold = true;
             soldTo = t.name;
+            // Check if sold via impact (if saved in STATE) - for now simplified check
           }
         });
 
@@ -555,7 +564,13 @@
             <button class="btn-sold green small" style="margin-left:4px">Sold</button>
           `;
         } else if(CURRENT_USER.role === 'team') {
-           actionHTML = `<button class="btn-bid-req ghost small">Bid Request</button>`;
+           // Team Controls: Regular Request & Impact Request
+           actionHTML = `
+             <div style="display:flex; gap:4px">
+               <button class="btn-bid-req ghost small">Bid</button>
+               <button class="btn-impact-req purple small">Impact</button>
+             </div>
+           `;
         }
 
         if(CURRENT_USER.role === 'admin') {
@@ -586,35 +601,35 @@
           if(soldBtn) soldBtn.onclick = () => openSoldConfirmation(catId, p.name, el.dataset.price);
           
           if(CURRENT_USER.role === 'team') {
+            // REGULAR BID REQUEST
             const reqBtn = el.querySelector('.btn-bid-req');
             if(reqBtn) {
               reqBtn.onclick = () => {
                 const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
-                // Validation (Same as your file)
-                if(myTeam) {
-                  if(myTeam.purchases && myTeam.purchases[catId]) {
-                    showToast('You already bought a player in this category!');
-                    return;
-                  }
-                  const proposedBid = Number(el.dataset.price) + Number(catConfig.increment);
-                  let reserveCost = 0;
-                  STATE.categories.forEach(c => {
-                    if (c.id !== catId) {
-                      if (!myTeam.purchases || !myTeam.purchases[c.id]) {
-                        reserveCost += Number(c.base);
-                      }
-                    }
-                  });
-
-                  if (proposedBid + reserveCost > myTeam.purse) {
-                     showToast(`Budget Warning! Bid+Reserves > Purse.`);
-                     return; 
-                  }
+                if(myTeam && myTeam.purchases && myTeam.purchases[catId]) {
+                   return showToast('Already bought in this category!');
                 }
                 const myTeamName = myTeam?.name || 'Team';
                 socket.emit('bid:request', { category: catId, playerName: p.name, teamName: myTeamName });
-                reqBtn.textContent = 'Requested';
+                reqBtn.textContent = '...';
               };
+            }
+
+            // IMPACT REQUEST
+            const impBtn = el.querySelector('.btn-impact-req');
+            if(impBtn) {
+                const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
+                // Disable if impact used
+                if(myTeam && myTeam.impactUsed) {
+                    impBtn.disabled = true;
+                    impBtn.style.opacity = 0.5;
+                } else {
+                    impBtn.onclick = () => {
+                        socket.emit('impact:request', { category: catId, playerName: p.name, teamName: myTeam.name });
+                        impBtn.textContent = 'Sent';
+                        showToast('Impact Request Sent', 'impact');
+                    }
+                }
             }
           }
         }
@@ -631,7 +646,7 @@
         div.innerHTML = `
            <div><strong>${t.name}</strong></div>
            <div style="text-align:right">
-             <div>৳ ${t.purse}</div>
+             <div>৳ ${t.purse} <span style="font-size:10px; color:#d946ef">(${t.impactPurse||0})</span></div>
              <div class="small" style="color:var(--muted)">${count} Players</div>
            </div>
         `;
@@ -644,7 +659,10 @@
       const t = STATE.teams.find(x => x.id === CURRENT_USER.teamId);
       if(!t) return;
       const div = document.getElementById('myTeamContent');
-      let html = `<div style="font-size:24px; font-weight:bold; margin-bottom:10px">Purse: ৳ ${t.purse}</div>`;
+      let html = `<div style="font-size:16px; font-weight:bold; margin-bottom:10px">
+                    Regular: ৳ ${t.purse}<br>
+                    <span style="color:#d946ef">Impact: ৳ ${t.impactPurse||0} ${t.impactUsed ? '(USED)' : ''}</span>
+                  </div>`;
       html += '<strong>My Purchases:</strong>';
       if(t.purchases) {
         Object.entries(t.purchases).forEach(([cat, name]) => {
@@ -654,9 +672,10 @@
       div.innerHTML = html;
     }
 
-    function showToast(msg) {
+    function showToast(msg, type) {
       const t = document.createElement('div');
       t.className = 'toast';
+      if(type === 'impact') t.classList.add('impact');
       t.textContent = msg;
       toastContainer.appendChild(t);
       setTimeout(() => t.remove(), 4000);
@@ -709,23 +728,67 @@
       const modal = document.getElementById('soldActionOverlay');
       const details = document.getElementById('soldActionDetails');
       const select = document.getElementById('soldActionTeam');
+      const impactCheck = document.getElementById('soldUseImpact');
+      
+      impactCheck.checked = false; // reset checkbox
       details.textContent = `${name} (${cat}) @ ${price}`;
-      select.innerHTML = '';
-      STATE.teams.forEach(t => {
-        const canAfford = t.purse >= Number(price);
-        const hasSlot = !(t.purchases && t.purchases[cat]);
-        const disabled = (canAfford && hasSlot) ? '' : 'disabled';
-        select.innerHTML += `<option value="${t.id}" ${disabled}>${t.name} (${canAfford ? '৳'+t.purse : 'Low Funds'})</option>`;
-      });
+      
+      // Initial Render of Dropdown
+      renderSoldTeamOptions(price, false, cat);
+
+      // Re-render when checkbox changes
+      impactCheck.onchange = (e) => {
+        renderSoldTeamOptions(price, e.target.checked, cat);
+      };
+      
       modal.classList.remove('hidden');
+    }
+
+    function renderSoldTeamOptions(price, useImpact, catId) {
+        const select = document.getElementById('soldActionTeam');
+        select.innerHTML = '';
+        STATE.teams.forEach(t => {
+            let canAfford = false;
+            let label = t.name;
+            let disabled = false;
+
+            if(useImpact) {
+                // Impact Logic
+                if(t.impactUsed) {
+                    label += " (Impact Used)";
+                    disabled = true;
+                } else if ((t.impactPurse || 0) < Number(price)) {
+                    label += " (Low Impact Funds)";
+                    disabled = true;
+                } else {
+                    canAfford = true;
+                    label += ` (Impact: ${t.impactPurse})`;
+                }
+            } else {
+                // Regular Logic
+                if(t.purchases && t.purchases[catId]) {
+                    label += " (Slot Full)";
+                    disabled = true; // Unless you want to allow over-buying
+                } else if (t.purse < Number(price)) {
+                    label += " (Low Funds)";
+                    disabled = true;
+                } else {
+                    canAfford = true;
+                    label += ` (Purse: ${t.purse})`;
+                }
+            }
+            select.innerHTML += `<option value="${t.id}" ${disabled ? 'disabled' : ''}>${label}</option>`;
+        });
     }
 
     document.getElementById('btnCancelSold').onclick = () => document.getElementById('soldActionOverlay').classList.add('hidden');
     
     document.getElementById('btnConfirmSold').onclick = () => {
       const teamId = document.getElementById('soldActionTeam').value;
-      if(!teamId) return alert('Select a valid team');
-      socket.emit('player:sold', { ...pendingSold, teamId });
+      const useImpact = document.getElementById('soldUseImpact').checked;
+      if(!teamId) return alert('Select a valid team (or check funds)');
+      
+      socket.emit('player:sold', { ...pendingSold, teamId, useImpact });
       document.getElementById('soldActionOverlay').classList.add('hidden');
     };
 
@@ -750,8 +813,10 @@
          const name = row.querySelector('.t-name').value.trim();
          const pass = row.querySelector('.t-pass').value.trim();
          const purse = row.querySelector('.t-purse').value;
+         const impact = row.querySelector('.t-impact').value;
+         
          if(!id || !name) valid = false;
-         newTeams.push({ id, name, password: pass, purse: Number(purse) });
+         newTeams.push({ id, name, password: pass, purse: Number(purse), impactPurse: Number(impact) });
       });
       if(!valid) return alert('ID and Name are required for all teams');
       socket.emit('admin:updateConfig', { teams: newTeams });
@@ -759,7 +824,7 @@
     };
 
     btnResetSystem.addEventListener('click', () => {
-      if(confirm('DANGER: This will wipe ALL players and balances. Are you sure?')) {
+      if(confirm('DANGER: This will wipe ALL players, balances, and impact usage. Are you sure?')) {
         socket.emit('admin:resetAll');
       }
     });
