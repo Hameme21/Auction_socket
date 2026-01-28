@@ -1,26 +1,37 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const admin = require('firebase-admin'); // Changed from googleapis
+const admin = require('firebase-admin'); 
 const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // Allow connections from anywhere
+        origin: "*", 
         methods: ["GET", "POST"]
     }
 });
 
-// --- CONFIGURATION ---
 const PORT = process.env.PORT || 3000;
-// Make sure you upload this file from Firebase Console!
-const SERVICE_ACCOUNT = require('./firebase-service-account.json');
 
-// --- FIREBASE INIT ---
+// --- SECURE FIREBASE CONNECTION ---
+// If running on Render (Cloud), use the Environment Variable
+// If running locally (Laptop), try to use the file if it exists
+let serviceAccount;
+try {
+    if (process.env.FIREBASE_JSON) {
+        serviceAccount = JSON.parse(process.env.FIREBASE_JSON);
+    } else {
+        serviceAccount = require('./firebase-service-account.json');
+    }
+} catch (e) {
+    console.error("CRITICAL ERROR: Could not load Firebase Key. Check Environment Variables or local file.");
+    process.exit(1); // Stop server if no key
+}
+
 admin.initializeApp({
-  credential: admin.credential.cert(SERVICE_ACCOUNT)
+  credential: admin.credential.cert(serviceAccount)
 });
 
 const db = admin.firestore();
@@ -39,7 +50,6 @@ let STATE = {
 // --- FIREBASE SYNC FUNCTIONS ---
 async function saveToFirebase() {
     try {
-        // We use set() with merge: true to avoid overwriting if fields define structure
         await DOC_REF.set(STATE);
         console.log('✅ State Saved to Firebase');
     } catch (err) { 
@@ -55,7 +65,6 @@ async function loadFromFirebase() {
             console.log('✅ Loaded State from Firebase');
         } else {
             console.log('⚠️ No existing data found in Firebase. Starting Fresh.');
-            // Create the initial doc
             await saveToFirebase();
         }
     } catch (e) { 
@@ -77,14 +86,13 @@ io.on('connection', (socket) => {
     });
 
     socket.on('manager:register', ({ username, password }) => {
-        // Ensure managers object exists
         if (!STATE.managers) STATE.managers = {};
         
         if (STATE.managers[username]) {
             return socket.emit('auth:portal_error', 'Username taken');
         }
         STATE.managers[username] = password;
-        saveToFirebase(); // Updated function
+        saveToFirebase(); 
         socket.emit('auth:portal_success', { msg: 'Account Created! Please Login.' });
     });
 
@@ -166,7 +174,7 @@ io.on('connection', (socket) => {
         STATE.teams.forEach(t => {
             if (t.purchases && t.purchases[category] === name) {
                 const price = STATE.soldPrices[`${category}:${name}`] || 0;
-                t.purse += price; // Refund
+                t.purse += price; 
                 delete t.purchases[category];
             }
         });
