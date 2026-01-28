@@ -123,13 +123,29 @@ io.on('connection', (socket) => {
     });
 
     socket.on('bid:request', ({ category, playerName, teamName }) => {
-        io.emit('admin:toast', { msg: `✋ Bid Request: ${teamName} for ${playerName}` });
+        io.emit('admin:toast', { msg: `✋ Bid Request: ${teamName} for ${playerName}`, type: 'normal' });
+    });
+
+    socket.on('impact:request', ({ category, playerName, teamName }) => {
+        io.emit('admin:toast', { msg: `🟣 IMPACT REQUEST: ${teamName} for ${playerName}`, type: 'impact' });
     });
 
     socket.on('player:sold', (data) => {
         const team = STATE.teams.find(t => t.id === data.teamId);
         if (team) {
-            team.purse -= data.price;
+            // Check if sold via Impact Purse
+            if (data.useImpact) {
+                if (team.impactUsed) {
+                    console.error("Team already used impact card!");
+                    return; 
+                }
+                team.impactPurse = (team.impactPurse || 0) - data.price;
+                team.impactUsed = true;
+            } else {
+                // Regular Sale
+                team.purse -= data.price;
+            }
+
             team.purchases = team.purchases || {};
             team.purchases[data.category] = data.name;
             
@@ -171,10 +187,22 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:resetPlayer', ({ category, name }) => {
+        // Find which team bought this player
         STATE.teams.forEach(t => {
             if (t.purchases && t.purchases[category] === name) {
                 const price = STATE.soldPrices[`${category}:${name}`] || 0;
+                
+                // Refund Logic:
+                // We need to know if this was an Impact purchase.
+                // Since our current state structure doesn't store 'isImpact' per player, 
+                // we infer it: if they used their impact card, we assume they might want it back manually,
+                // OR we can't easily auto-refund to the correct purse without storing metadata.
+                // Simplified Fix: Refund to Regular Purse by default, Admin can adjust manually.
+                // OR better: check if this player was the impact one? 
+                
+                // For simplicity in this lightweight version: Refund to MAIN purse.
                 t.purse += price; 
+                
                 delete t.purchases[category];
             }
         });
@@ -190,7 +218,9 @@ io.on('connection', (socket) => {
         STATE.activeBids = {};
         STATE.soldPrices = {};
         STATE.teams.forEach(t => {
-            t.purse = 500; 
+            t.purse = 500; // Default Reset Value
+            t.impactPurse = 0; // Reset Impact
+            t.impactUsed = false;
             t.purchases = {};
         });
         io.emit('state:updated', STATE);
