@@ -133,16 +133,22 @@ io.on('connection', (socket) => {
     socket.on('player:sold', (data) => {
         const team = STATE.teams.find(t => t.id === data.teamId);
         if (team) {
-            // Check if sold via Impact Purse
+            // --- UPDATED LOGIC HERE ---
             if (data.useImpact) {
                 if (team.impactUsed) {
-                    console.error("Team already used impact card!");
-                    return; 
+                    return console.error("Cheat attempt: Impact already used.");
                 }
-                team.impactPurse = (team.impactPurse || 0) - data.price;
+                
+                // Logic: Combined Purse = Main + Impact
+                // New Main = (Main + Impact) - Price
+                const currentMain = team.purse || 0;
+                const impactBonus = team.impactPurse || 0;
+                
+                team.purse = (currentMain + impactBonus) - data.price;
                 team.impactUsed = true;
+                
             } else {
-                // Regular Sale
+                // Regular Sale: Just minus from main purse
                 team.purse -= data.price;
             }
 
@@ -187,22 +193,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:resetPlayer', ({ category, name }) => {
-        // Find which team bought this player
         STATE.teams.forEach(t => {
             if (t.purchases && t.purchases[category] === name) {
                 const price = STATE.soldPrices[`${category}:${name}`] || 0;
                 
-                // Refund Logic:
-                // We need to know if this was an Impact purchase.
-                // Since our current state structure doesn't store 'isImpact' per player, 
-                // we infer it: if they used their impact card, we assume they might want it back manually,
-                // OR we can't easily auto-refund to the correct purse without storing metadata.
-                // Simplified Fix: Refund to Regular Purse by default, Admin can adjust manually.
-                // OR better: check if this player was the impact one? 
-                
-                // For simplicity in this lightweight version: Refund to MAIN purse.
+                // Simple Refund (Adds back to Main)
+                // Note: If they used Impact, we don't automatically "un-use" it
+                // because that logic gets complicated. Admin can manually fix purse if needed.
                 t.purse += price; 
-                
                 delete t.purchases[category];
             }
         });
@@ -218,8 +216,8 @@ io.on('connection', (socket) => {
         STATE.activeBids = {};
         STATE.soldPrices = {};
         STATE.teams.forEach(t => {
-            t.purse = 500; // Default Reset Value
-            t.impactPurse = 0; // Reset Impact
+            t.purse = 500; 
+            t.impactPurse = 0; 
             t.impactUsed = false;
             t.purchases = {};
         });
