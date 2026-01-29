@@ -51,7 +51,6 @@
     .price{font-size:18px;font-weight:700;}
     
     /* --- Team Settings Grid --- */
-    /* Updated grid columns to include Impact Purse */
     .team-config-row { display: grid; grid-template-columns: 0.4fr 1.2fr 1fr 0.8fr 0.8fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
     .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
@@ -155,8 +154,8 @@
         <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:6px; margin-bottom:15px; display:flex; align-items:center;">
             <input type="checkbox" id="soldUseImpact" style="width:auto; margin:0 10px 0 0;">
             <div>
-                <strong style="display:block; font-size:13px;">Use Impact Purse?</strong>
-                <span style="font-size:11px; color:var(--muted)">Deducts from Impact Balance (Limit 1 per team)</span>
+                <strong style="display:block; font-size:13px; color:#d946ef">Use Impact Purse?</strong>
+                <span style="font-size:11px; color:var(--muted)">Adds Impact Bonus to Main Purse for this buy only.</span>
             </div>
         </div>
 
@@ -239,7 +238,7 @@
         <h1 style="color:#ffd166; font-size:40px; margin:0;">SOLD!</h1>
         <h2 id="animPlayer">Player</h2>
         <p>Sold to <strong id="animTeam">Team</strong> for <span id="animPrice">0</span></p>
-        <div id="animImpactTag" class="hidden" style="color:#d946ef; font-weight:bold; margin-top:5px;">(IMPACT PLAYER)</div>
+        <div id="animImpactTag" class="hidden" style="color:#d946ef; font-weight:bold; margin-top:5px;">(IMPACT PURSE USED)</div>
       </div>
     </div>
 
@@ -539,7 +538,6 @@
           if(t.purchases && t.purchases[catId] === p.name) {
             isSold = true;
             soldTo = t.name;
-            // Check if sold via impact (if saved in STATE) - for now simplified check
           }
         });
 
@@ -646,7 +644,7 @@
         div.innerHTML = `
            <div><strong>${t.name}</strong></div>
            <div style="text-align:right">
-             <div>৳ ${t.purse} <span style="font-size:10px; color:#d946ef">(${t.impactPurse||0})</span></div>
+             <div>৳ ${t.purse} <span style="font-size:10px; color:#d946ef">(${t.impactUsed ? 'Used' : '+' + (t.impactPurse||0)})</span></div>
              <div class="small" style="color:var(--muted)">${count} Players</div>
            </div>
         `;
@@ -661,7 +659,7 @@
       const div = document.getElementById('myTeamContent');
       let html = `<div style="font-size:16px; font-weight:bold; margin-bottom:10px">
                     Regular: ৳ ${t.purse}<br>
-                    <span style="color:#d946ef">Impact: ৳ ${t.impactPurse||0} ${t.impactUsed ? '(USED)' : ''}</span>
+                    <span style="color:#d946ef">Impact Bonus: ৳ ${t.impactUsed ? '0 (Used)' : (t.impactPurse||0)}</span>
                   </div>`;
       html += '<strong>My Purchases:</strong>';
       if(t.purchases) {
@@ -751,24 +749,30 @@
             let canAfford = false;
             let label = t.name;
             let disabled = false;
-
+            
+            // MATH LOGIC FOR DROPDOWN
+            // Regular: Purse >= Price
+            // Impact: (Purse + Impact) >= Price
+            
             if(useImpact) {
-                // Impact Logic
                 if(t.impactUsed) {
                     label += " (Impact Used)";
                     disabled = true;
-                } else if ((t.impactPurse || 0) < Number(price)) {
-                    label += " (Low Impact Funds)";
-                    disabled = true;
                 } else {
-                    canAfford = true;
-                    label += ` (Impact: ${t.impactPurse})`;
+                    const totalBuyingPower = (t.purse || 0) + (t.impactPurse || 0);
+                    if (totalBuyingPower < Number(price)) {
+                        label += " (Low Total Funds)";
+                        disabled = true;
+                    } else {
+                        canAfford = true;
+                        label += ` (Total: ${totalBuyingPower})`;
+                    }
                 }
             } else {
                 // Regular Logic
                 if(t.purchases && t.purchases[catId]) {
                     label += " (Slot Full)";
-                    disabled = true; // Unless you want to allow over-buying
+                    disabled = true; 
                 } else if (t.purse < Number(price)) {
                     label += " (Low Funds)";
                     disabled = true;
