@@ -16,8 +16,6 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 
 // --- SECURE FIREBASE CONNECTION ---
-// If running on Render (Cloud), use the Environment Variable
-// If running locally (Laptop), try to use the file if it exists
 let serviceAccount;
 try {
     if (process.env.FIREBASE_JSON) {
@@ -26,8 +24,8 @@ try {
         serviceAccount = require('./firebase-service-account.json');
     }
 } catch (e) {
-    console.error("CRITICAL ERROR: Could not load Firebase Key. Check Environment Variables or local file.");
-    process.exit(1); // Stop server if no key
+    console.error("CRITICAL ERROR: Could not load Firebase Key.");
+    process.exit(1); 
 }
 
 admin.initializeApp({
@@ -47,14 +45,9 @@ let STATE = {
     managers: {} 
 };
 
-// --- FIREBASE SYNC FUNCTIONS ---
+// --- FIREBASE SYNC ---
 async function saveToFirebase() {
-    try {
-        await DOC_REF.set(STATE);
-        console.log('✅ State Saved to Firebase');
-    } catch (err) { 
-        console.error('❌ Save Error:', err.message); 
-    }
+    try { await DOC_REF.set(STATE); } catch (err) { console.error('❌ Save Error:', err.message); }
 }
 
 async function loadFromFirebase() {
@@ -64,19 +57,15 @@ async function loadFromFirebase() {
             STATE = doc.data();
             console.log('✅ Loaded State from Firebase');
         } else {
-            console.log('⚠️ No existing data found in Firebase. Starting Fresh.');
             await saveToFirebase();
         }
-    } catch (e) { 
-        console.log('⚠️ Error loading from Firebase:', e.message); 
-    }
+    } catch (e) { console.log('⚠️ Error loading from Firebase:', e.message); }
 }
 
 // --- REAL-TIME LOGIC ---
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
     
-    // 1. Manager Authentication
     socket.on('manager:login', ({ username, password }) => {
         if (STATE.managers && STATE.managers[username] === password) {
             socket.emit('manager:logged_in', { username, state: STATE });
@@ -87,36 +76,26 @@ io.on('connection', (socket) => {
 
     socket.on('manager:register', ({ username, password }) => {
         if (!STATE.managers) STATE.managers = {};
-        
-        if (STATE.managers[username]) {
-            return socket.emit('auth:portal_error', 'Username taken');
-        }
+        if (STATE.managers[username]) return socket.emit('auth:portal_error', 'Username taken');
         STATE.managers[username] = password;
         saveToFirebase(); 
         socket.emit('auth:portal_success', { msg: 'Account Created! Please Login.' });
     });
 
-    // 2. Team/Participant Connection
     socket.on('participant:connect', (hostId) => {
-        if (!STATE.managers || !STATE.managers[hostId]) {
-            return socket.emit('auth:portal_error', 'Host ID not found');
-        }
+        if (!STATE.managers || !STATE.managers[hostId]) return socket.emit('auth:portal_error', 'Host ID not found');
         socket.emit('init:teams_available', { hostId, teams: STATE.teams || [] });
     });
 
     socket.on('team:login', ({ teamId, password, role }) => {
         const team = STATE.teams.find(t => t.id === teamId);
-        if (role === 'team' && (!team || team.password !== password)) {
-            return socket.emit('auth:team_error', 'Invalid Team Password');
-        }
+        if (role === 'team' && (!team || team.password !== password)) return socket.emit('auth:team_error', 'Invalid Team Password');
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
-    // 3. Auction Actions
     socket.on('player:bid', (data) => {
         const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
-        
         STATE.activeBids[key] = data.price;
         io.emit('player:bid', data);
         saveToFirebase();
@@ -130,26 +109,30 @@ io.on('connection', (socket) => {
         io.emit('admin:toast', { msg: `🟣 IMPACT REQUEST: ${teamName} for ${playerName}`, type: 'impact' });
     });
 
+    // --- NEW TRANSACTION LOGIC ---
     socket.on('player:sold', (data) => {
         const team = STATE.teams.find(t => t.id === data.teamId);
         if (team) {
-            // --- UPDATED LOGIC HERE ---
+            let priceRemaining = Number(data.price);
+            
+            // 1. Try to use Impact Purse FIRST if requested
             if (data.useImpact) {
-                if (team.impactUsed) {
-                    return console.error("Cheat attempt: Impact already used.");
+                const impactBalance = Number(team.impactPurse || 0);
+                
+                if (impactBalance >= priceRemaining) {
+                    // Scenario A: Impact pays for EVERYTHING
+                    team.impactPurse = impactBalance - priceRemaining;
+                    priceRemaining = 0;
+                } else {
+                    // Scenario B: Impact pays PARTIAL, Main pays the rest
+                    team.impactPurse = 0; // Impact Empty
+                    priceRemaining = priceRemaining - impactBalance;
                 }
-                
-                // Logic: Combined Purse = Main + Impact
-                // New Main = (Main + Impact) - Price
-                const currentMain = team.purse || 0;
-                const impactBonus = team.impactPurse || 0;
-                
-                team.purse = (currentMain + impactBonus) - data.price;
-                team.impactUsed = true;
-                
-            } else {
-                // Regular Sale: Just minus from main purse
-                team.purse -= data.price;
+            }
+
+            // 2. Pay remaining amount from Main Purse
+            if (priceRemaining > 0) {
+                team.purse = Number(team.purse || 0) - priceRemaining;
             }
 
             team.purchases = team.purchases || {};
@@ -163,7 +146,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 4. Admin Management
     socket.on('admin:updateConfig', (newConfig) => {
         if(newConfig.teams) STATE.teams = newConfig.teams;
         if(newConfig.categories) STATE.categories = newConfig.categories;
@@ -196,10 +178,9 @@ io.on('connection', (socket) => {
         STATE.teams.forEach(t => {
             if (t.purchases && t.purchases[category] === name) {
                 const price = STATE.soldPrices[`${category}:${name}`] || 0;
-                
-                // Simple Refund (Adds back to Main)
-                // Note: If they used Impact, we don't automatically "un-use" it
-                // because that logic gets complicated. Admin can manually fix purse if needed.
+                // Refund logic is tricky with split wallets. 
+                // Defaulting to refunding MAIN PURSE to be safe. 
+                // Admin can manually fix Impact Purse in settings if needed.
                 t.purse += price; 
                 delete t.purchases[category];
             }
@@ -218,7 +199,6 @@ io.on('connection', (socket) => {
         STATE.teams.forEach(t => {
             t.purse = 500; 
             t.impactPurse = 0; 
-            t.impactUsed = false;
             t.purchases = {};
         });
         io.emit('state:updated', STATE);
