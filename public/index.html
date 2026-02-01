@@ -18,7 +18,7 @@
     label{display:block;margin-bottom:6px;color:var(--muted);font-size:13px}
     textarea{width:100%;min-height:90px;background:var(--glass);border:1px solid rgba(255,255,255,0.03);padding:10px;border-radius:8px;color:inherit}
     
-    /* Login */
+    /* Portal */
     #portal, #teamAuthOverlay { position: fixed; inset: 0; z-index: 5000; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-direction: column; }
     .portal-card { background: var(--card); padding: 30px; border-radius: 12px; width: 350px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); text-align: center; }
     .tab-nav { display: flex; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -36,8 +36,6 @@
     button.small{padding: 5px 10px; font-size: 11px;}
     button.player-btn { width: 100%; text-align: left; background: rgba(255,255,255,0.05); padding: 8px; border: 1px solid transparent; border-radius: 4px; transition: 0.2s; }
     button.player-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--accent); }
-    button.player-btn.disabled { opacity: 1; cursor: default; }
-    button.player-btn.disabled:hover { background: rgba(255,255,255,0.05); border-color: transparent; }
     
     input, select { background:var(--glass); border:1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; width: 100%; margin-bottom: 10px; }
 
@@ -66,7 +64,7 @@
     .toast {background: #1e293b; color: #fff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #7c3aed; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;}
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-    /* Sold Animation */
+    /* Animation */
     #soldAnimationOverlay { position: fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; display:flex; justify-content:center; align-items:center; }
     #hammer{ width:120px; height:120px; transform-origin:20% 20%; pointer-events:none; position:fixed; left:50%; margin-left:-60px; top:40px; z-index:4500; display: none; }
     #hammer.swing{ display: block; animation: hammerSwing 560ms cubic-bezier(.2,.8,.2,1) forwards; }
@@ -166,7 +164,7 @@
         </div>
         
         <div id="detailViewerMsg" class="small hidden" style="color:var(--muted); margin-top:10px;">
-            <span id="viewStatus">Waiting for Auctioneer...</span>
+            <span id="viewStatus">Live View</span>
         </div>
       </div>
     </div>
@@ -318,12 +316,10 @@
           const catList = STATE.playersSnapshot[currentlyViewedPlayer.category];
           const p = catList ? catList.find(x => x.name === currentlyViewedPlayer.name) : null;
           if(p) {
-             // If someone updated the image url
              if(p.image && p.image !== currentlyViewedPlayer.image) {
                  currentlyViewedPlayer.image = p.image;
                  updateModalImage(p.image);
              }
-             // Sync Price if not mid-bid
              const key = `${currentlyViewedPlayer.category}:${p.name}`;
              const price = STATE.soldPrices[key] || STATE.activeBids[key] || p.price;
              document.getElementById('detailPrice').textContent = price;
@@ -340,7 +336,7 @@
         el.querySelector('.price').style.color = '#fbbf24';
         el.classList.add('bidding'); setTimeout(()=>el.classList.remove('bidding'), 300);
       }
-      // Update modal live
+      // Update modal live if open
       if(currentlyViewedPlayer && currentlyViewedPlayer.name === pl.name) {
           document.getElementById('detailPrice').textContent = pl.price;
       }
@@ -354,7 +350,7 @@
       const el = getPlayerEl(category, name);
       if(el) el.classList.add('sold');
       
-      // Close detail modal automatically for everyone
+      // Close detail modal automatically
       closePlayerModal(false); 
 
       const teamName = STATE.teams.find(t=>t.id===teamId)?.name || teamId;
@@ -376,16 +372,17 @@
       renderMyTeam();
     });
 
-    // --- POPUP SYNC LISTENERS ---
-    socket.on('auction:select_player', (data) => {
-        // Everyone receives this command to open the modal
-        openPlayerDetailModal(data, false); // false = do not re-emit
+    socket.on('admin:toast', (data) => {
+      if(CURRENT_USER.role === 'admin') showToast(data.msg);
     });
 
-    socket.on('auction:close_player', () => {
-        closePlayerModal(false); // false = do not re-emit
+    // --- SYNC MODAL LISTENERS ---
+    socket.on('auction:select_player', (data) => {
+        openPlayerDetailModal(data, false);
     });
-    // ----------------------------
+    socket.on('auction:close_player', () => {
+        closePlayerModal(false);
+    });
 
     // -- UI Render --
     function setupUI() {
@@ -409,8 +406,8 @@
           </div>`;
         
         if(CURRENT_USER.role === 'admin') {
-           html += `<textarea id="ta-${cat.id}" class="cat-ta" onblur="saveCat('${cat.id}')" placeholder="Paste Names..."></textarea>`;
-           html += `<div style="margin-bottom:10px;display:flex;gap:5px;">
+           html += `<textarea id="ta-${cat.id}" class="cat-ta" onblur="saveCat('${cat.id}')" placeholder="Paste Names..."></textarea>
+           <div style="margin-bottom:10px;display:flex;gap:5px;">
              <button class="ghost small" onclick="saveCat('${cat.id}')">Save List</button>
              <button class="red small" onclick="deleteCat('${cat.id}')">Del Cat</button>
            </div>`;
@@ -419,7 +416,6 @@
         div.innerHTML = html;
         ctn.appendChild(div);
         
-        // Render Players
         const pContainer = div.querySelector(`#playersList-${cat.id}`);
         const players = STATE.playersSnapshot[cat.id] || [];
         
@@ -431,50 +427,51 @@
              const el = document.createElement('div');
              el.className = `player ${isSold ? 'sold' : ''}`;
              el.dataset.name = p.name;
+             el.dataset.price = price;
              
-             let status = `৳ ${price}`;
-             if(isSold) status += ` <span style="color:var(--accent);font-size:11px;">(Sold)</span>`;
-             else if(STATE.activeBids[key]) status += ` <span style="color:#fbbf24;font-size:11px;">(Bid)</span>`;
-
-             // Reset Button for Admin
-             let resetBtn = '';
-             if(CURRENT_USER.role === 'admin' && (isSold || STATE.activeBids[key])) {
-                 resetBtn = `<button class="yellow small" onclick="resetPlayer('${cat.id}','${p.name}')" style="margin-left:5px">↺</button>`;
+             let leftHtml = '';
+             let rightHtml = `<span class="price" style="font-weight:bold; font-size:14px;">৳ ${price}</span>`;
+             
+             // --- CONDITIONAL RENDERING ---
+             if(CURRENT_USER.role === 'admin') {
+                 // Admin: Name is Button, No Bid/Sold buttons here (Moved to Popup)
+                 leftHtml = `<button class="player-btn" id="btn-${key.replace(/[^a-z0-9]/gi,'')}">${p.name}</button>`;
+                 if(isSold || STATE.activeBids[key]) {
+                     rightHtml += `<button class="yellow small" onclick="resetPlayer('${cat.id}','${p.name}')" style="margin-left:5px">↺</button>`;
+                 }
+             } else {
+                 // Team/Guest: Name is Text
+                 leftHtml = `<div style="font-weight:bold; padding:8px 0;">${p.name}</div>`;
+                 
+                 // ** RESTORED TEAM REPRESENTATIVE PART **
+                 if(!isSold && CURRENT_USER.role === 'team') {
+                     rightHtml += `<button class="ghost small btn-bid-req" style="margin-left:5px">Bid Request</button>`;
+                 }
+                 if(isSold) rightHtml += ` <span style="font-size:11px;color:var(--accent)">SOLD</span>`;
              }
 
-             el.innerHTML = `
-               <div class="left" style="flex:1">
-                 <button class="player-btn ${CURRENT_USER.role !== 'admin' ? 'disabled' : ''}" id="btn-${key.replace(/[^a-z0-9]/gi,'')}">${p.name}</button>
-               </div>
-               <div class="right" style="display:flex;align-items:center">
-                 <span class="price" style="font-weight:bold; font-size:14px;">${status}</span>
-                 ${resetBtn}
-               </div>
-             `;
+             el.innerHTML = `<div class="left" style="flex:1">${leftHtml}</div><div class="right" style="display:flex;align-items:center">${rightHtml}</div>`;
              
-             // CLICK LOGIC: ONLY ADMIN CAN OPEN
-             const btn = el.querySelector('.player-btn');
+             // Event Listeners
              if(CURRENT_USER.role === 'admin') {
-                 btn.onclick = () => {
-                     // Open Local & Sync
-                     const data = { 
-                         name: p.name, 
-                         category: cat.id, 
-                         price: price, 
-                         image: p.image,
-                         increment: cat.increment,
-                         isSold: isSold 
-                     };
-                     openPlayerDetailModal(data, true); // true = emit to server
+                 el.querySelector('.player-btn').onclick = () => {
+                     const data = { name: p.name, category: cat.id, price: price, image: p.image, increment: cat.increment, isSold: isSold };
+                     openPlayerDetailModal(data, true); // true = sync
                  };
-             } else {
-                 btn.onclick = (e) => e.preventDefault(); // Teams click does nothing
+             } else if (CURRENT_USER.role === 'team' && !isSold) {
+                 const reqBtn = el.querySelector('.btn-bid-req');
+                 if(reqBtn) {
+                     reqBtn.onclick = () => {
+                         const myTeam = STATE.teams.find(t=>t.id===CURRENT_USER.teamId);
+                         if(myTeam) socket.emit('bid:request', { category: cat.id, playerName: p.name, teamName: myTeam.name });
+                         reqBtn.textContent = 'Sent';
+                     };
+                 }
              }
 
              pContainer.appendChild(el);
         });
         
-        // Fill textareas if admin
         if(CURRENT_USER.role === 'admin') {
            const ta = document.getElementById(`ta-${cat.id}`);
            if(ta && document.activeElement !== ta) ta.value = players.map(x=>x.name).join('\n');
@@ -486,12 +483,10 @@
     function openPlayerDetailModal(data, emitSync) {
         currentlyViewedPlayer = data;
         
-        // Emit if Admin triggered it locally
         if(emitSync && CURRENT_USER.role === 'admin') {
             socket.emit('admin:select_player', data);
         }
 
-        // Populate Data
         document.getElementById('detailName').textContent = data.name;
         document.getElementById('detailCat').textContent = data.category;
         document.getElementById('detailPrice').textContent = data.price;
@@ -503,40 +498,29 @@
         const viewerMsg = document.getElementById('detailViewerMsg');
         const closeBtn = document.getElementById('btnCloseDetail');
 
-        // Role-based visibility
         if(CURRENT_USER.role === 'admin') {
             adminControls.classList.remove('hidden');
             adminActions.classList.toggle('hidden', data.isSold);
             viewerMsg.classList.add('hidden');
             document.getElementById('detailImgUrl').value = data.image || '';
             
-            // Bind Admin Buttons
             document.getElementById('btnDetailBid').onclick = () => {
                 const next = Number(document.getElementById('detailPrice').textContent) + Number(data.increment);
                 socket.emit('player:bid', { category: data.category, name: data.name, price: next });
             };
             document.getElementById('btnDetailSold').onclick = () => {
-                // Admin closes manual, then opens Sold modal
                 closePlayerModal(true); 
                 openSoldConfirmation(data.category, data.name, document.getElementById('detailPrice').textContent);
             };
-            
-            closeBtn.onclick = () => closePlayerModal(true); // Admin close syncs
-
+            closeBtn.onclick = () => closePlayerModal(true); 
         } else {
-            // Team/Viewer View
+            // Team/Guest View
             adminControls.classList.add('hidden');
             adminActions.classList.add('hidden');
             viewerMsg.classList.remove('hidden');
-            document.getElementById('viewStatus').textContent = data.isSold ? "Player Sold" : "Bidding in Progress...";
-            
-            // Viewers cannot close the modal themselves (it's driven by admin)
-            // But we allow local close just in case, but usually hide the button?
-            // Prompt says "pop up ... will appear". Generally synced modals are controlled by admin.
-            // We'll leave the close button but it only closes locally.
+            document.getElementById('viewStatus').textContent = data.isSold ? "Player Sold" : "Bidding...";
             closeBtn.onclick = () => closePlayerModal(false); 
         }
-
         modal.classList.remove('hidden');
     }
 
@@ -557,16 +541,12 @@
     function savePlayerImage() {
         const url = document.getElementById('detailImgUrl').value;
         if(currentlyViewedPlayer) {
-            socket.emit('admin:updatePlayerImage', { 
-                category: currentlyViewedPlayer.category, 
-                name: currentlyViewedPlayer.name, 
-                imageUrl: url 
-            });
-            updateModalImage(url); // Local update immediately
+            socket.emit('admin:updatePlayerImage', { category: currentlyViewedPlayer.category, name: currentlyViewedPlayer.name, imageUrl: url });
+            updateModalImage(url);
         }
     }
 
-    // --- OTHER HELPERS ---
+    // --- UTILITIES ---
     function renderScoreboard() {
         const sb = document.getElementById('scoreboard'); sb.innerHTML = '';
         STATE.teams.forEach(t => {
@@ -590,8 +570,9 @@
              <button class="yellow small" onclick="alert('Edit purse manually')">↺</button> <button class="red small" onclick="this.parentElement.remove()">X</button></div>`;
         });
     }
+    function showToast(m) { const t=document.createElement('div'); t.className='toast'; t.textContent=m; document.getElementById('toastContainer').append(t); setTimeout(()=>t.remove(),4000); }
 
-    // --- ADMIN ACTIONS ---
+    // --- ACTIONS ---
     document.getElementById('btnAddCat').onclick = () => {
         const id=document.getElementById('newCatId').value, b=document.getElementById('newCatBase').value, i=document.getElementById('newCatInc').value;
         if(id&&b&&i) { STATE.categories.push({id:id.toUpperCase(), base:Number(b), increment:Number(i)}); socket.emit('admin:updateConfig', {categories:STATE.categories}); }
