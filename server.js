@@ -3,17 +3,39 @@ const http = require('http');
 const { Server } = require('socket.io');
 const admin = require('firebase-admin'); 
 const path = require('path');
+const multer = require('multer'); // NEW: For handling file uploads
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: "*", 
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
 const PORT = process.env.PORT || 3000;
+
+// --- FILE UPLOAD CONFIGURATION (NEW) ---
+const uploadDir = path.join(__dirname, 'public/uploads');
+// Ensure the upload directory exists
+if (!fs.existsSync(uploadDir)){
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadDir)
+  },
+  filename: function (req, file, cb) {
+    // Save as timestamp-filename to avoid duplicates
+    cb(null, Date.now() + '-' + file.originalname)
+  }
+});
+
+const upload = multer({ storage: storage });
+
+// Serve uploaded files statically so the frontend can access them
+app.use('/uploads', express.static(uploadDir));
+// ---------------------------------------
 
 // --- SECURE FIREBASE CONNECTION ---
 let serviceAccount;
@@ -39,7 +61,7 @@ const DOC_REF = db.collection('auction_data').doc('current_state');
 let STATE = {
     teams: [],
     categories: [],
-    playersSnapshot: {}, // Structure: { "CatID": [ {name: "Name", price: 100, image: "url"} ] }
+    playersSnapshot: {}, 
     activeBids: {},
     soldPrices: {},
     managers: {} 
@@ -69,6 +91,15 @@ async function loadFromFirebase() {
         console.log('⚠️ Error loading from Firebase:', e.message); 
     }
 }
+
+// --- NEW: UPLOAD ENDPOINT ---
+app.post('/upload', upload.single('playerImage'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('No file uploaded.');
+    }
+    // Return the relative path for the frontend
+    res.json({ url: `/uploads/${req.file.filename}` });
+});
 
 // --- REAL-TIME LOGIC ---
 io.on('connection', (socket) => {
@@ -137,6 +168,12 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- NEW: POP-UP SYNC EVENT ---
+    socket.on('admin:reveal_player', (playerData) => {
+        // Broadcast to everyone (teams, guests, and other admins)
+        io.emit('popup:reveal', playerData);
+    });
+
     // 4. Admin Management
     socket.on('admin:updateConfig', (newConfig) => {
         if(newConfig.teams) STATE.teams = newConfig.teams;
@@ -147,7 +184,6 @@ io.on('connection', (socket) => {
 
     socket.on('players:save', ({ category, players }) => {
         if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
-        // Preserve existing images if simply updating list
         const existing = STATE.playersSnapshot[category] || [];
         
         const mergedPlayers = players.map(newP => {
@@ -155,7 +191,7 @@ io.on('connection', (socket) => {
             return {
                 name: newP.name,
                 price: newP.price,
-                image: oldP ? oldP.image : null // Keep image if exists
+                image: oldP ? oldP.image : null 
             };
         });
 
@@ -164,13 +200,15 @@ io.on('connection', (socket) => {
         saveToFirebase();
     });
 
-    // NEW: Update Player Image
+    // NEW: Update Player Image and Broadcast to Popup
     socket.on('admin:updatePlayerImage', ({ category, name, imageUrl }) => {
         if (STATE.playersSnapshot && STATE.playersSnapshot[category]) {
             const player = STATE.playersSnapshot[category].find(p => p.name === name);
             if (player) {
                 player.image = imageUrl;
-                io.emit('state:updated', STATE);
+                io.emit('state:updated', STATE); // Update list views
+                // Also force update the popup if it is currently open on anyone's screen
+                io.emit('popup:update_image', { category, name, imageUrl });
                 saveToFirebase();
             }
         }
