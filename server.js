@@ -12,7 +12,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-// --- FIREBASE SETUP ---
+// --- SECURE FIREBASE CONNECTION ---
 let serviceAccount;
 try {
     if (process.env.FIREBASE_JSON) {
@@ -21,42 +21,46 @@ try {
         serviceAccount = require('./firebase-service-account.json');
     }
 } catch (e) {
-    console.error("CRITICAL ERROR: Could not load Firebase Key.");
+    console.error("CRITICAL ERROR: Could not load Firebase Key. Check Environment Variables or local file.");
     process.exit(1);
 }
 
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
-// --- STATE ---
+// --- INITIAL STATE ---
 let STATE = {
     teams: [],
     categories: [],
-    playersSnapshot: {},
+    playersSnapshot: {}, 
     activeBids: {},
     soldPrices: {},
     managers: {} 
 };
 
-// --- SYNC ---
+// --- FIREBASE SYNC FUNCTIONS ---
 async function saveToFirebase() {
-    try { await DOC_REF.set(STATE); } catch (err) { console.error(err.message); }
+    try { await DOC_REF.set(STATE); console.log('✅ State Saved'); } 
+    catch (err) { console.error('❌ Save Error:', err.message); }
 }
 
 async function loadFromFirebase() {
     try {
         const doc = await DOC_REF.get();
-        if (doc.exists) STATE = doc.data();
-        else await saveToFirebase();
-    } catch (e) { console.log(e.message); }
+        if (doc.exists) { STATE = doc.data(); console.log('✅ Loaded State'); } 
+        else { await saveToFirebase(); }
+    } catch (e) { console.log('⚠️ Error loading:', e.message); }
 }
 
 // --- REAL-TIME LOGIC ---
 io.on('connection', (socket) => {
-    console.log('User:', socket.id);
+    console.log('User connected:', socket.id);
     
-    // Auth & Connect
+    // 1. Auth
     socket.on('manager:login', ({ username, password }) => {
         if (STATE.managers && STATE.managers[username] === password) {
             socket.emit('manager:logged_in', { username, state: STATE });
@@ -80,13 +84,11 @@ io.on('connection', (socket) => {
 
     socket.on('team:login', ({ teamId, password, role }) => {
         const team = STATE.teams.find(t => t.id === teamId);
-        if (role === 'team' && (!team || team.password !== password)) {
-            return socket.emit('auth:team_error', 'Wrong Password');
-        }
+        if (role === 'team' && (!team || team.password !== password)) return socket.emit('auth:team_error', 'Wrong Password');
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
-    // --- AUCTION CORE ---
+    // 2. Core Auction
     socket.on('player:bid', (data) => {
         const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
@@ -95,12 +97,17 @@ io.on('connection', (socket) => {
         saveToFirebase();
     });
 
+    socket.on('bid:request', ({ category, playerName, teamName }) => {
+        io.emit('admin:toast', { msg: `✋ Bid Request: ${teamName} for ${playerName}`, type: 'normal' });
+    });
+
     socket.on('player:sold', (data) => {
         const team = STATE.teams.find(t => t.id === data.teamId);
         if (team) {
             team.purse -= data.price;
             team.purchases = team.purchases || {};
             team.purchases[data.category] = data.name;
+            
             if (!STATE.soldPrices) STATE.soldPrices = {};
             STATE.soldPrices[`${data.category}:${data.name}`] = data.price;
             
@@ -109,17 +116,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- NEW: SYNC POPUP ---
-    socket.on('admin:select_player', (data) => {
-        // Broadcast this player view to EVERYONE
-        io.emit('auction:select_player', data);
-    });
-
-    socket.on('admin:close_player', () => {
-        io.emit('auction:close_player');
-    });
-    // -----------------------
-
+    // 3. Admin Config & Management
     socket.on('admin:updateConfig', (newConfig) => {
         if(newConfig.teams) STATE.teams = newConfig.teams;
         if(newConfig.categories) STATE.categories = newConfig.categories;
@@ -173,6 +170,7 @@ io.on('connection', (socket) => {
         const key = `${category}:${name}`;
         if (STATE.soldPrices) delete STATE.soldPrices[key];
         if (STATE.activeBids) delete STATE.activeBids[key];
+        
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
@@ -183,6 +181,17 @@ io.on('connection', (socket) => {
         STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; });
         io.emit('state:updated', STATE);
         saveToFirebase();
+    });
+
+    // 4. SYNC POPUP (NEW)
+    socket.on('admin:select_player', (data) => {
+        // Broadcast to EVERYONE to open the modal
+        io.emit('auction:select_player', data);
+    });
+
+    socket.on('admin:close_player', () => {
+        // Broadcast to EVERYONE to close the modal
+        io.emit('auction:close_player');
     });
 });
 
