@@ -49,6 +49,11 @@
     .name{font-weight:600}
     .price{font-size:18px;font-weight:700;}
     
+    /* --- Team Settings Grid --- */
+    /* UPDATED GRID COLUMNS */
+    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 0.6fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .team-config-header { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 0.6fr auto auto; font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+
     /* --- Scoreboard --- */
     .team-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02); margin-bottom: 8px;}
 
@@ -81,7 +86,7 @@
 
     /* --- Sold Animation Overlay --- */
     #soldAnimationOverlay { position: fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; display:flex; justify-content:center; align-items:center; }
-    
+
     /* --- Team Logo Styles --- */
     .team-logo { 
       width: 30px; height: 30px; 
@@ -92,17 +97,15 @@
     
     /* Login Panel Large Logo */
     .team-logo-large { 
-      width: 80px; height: 80px; 
+      width: 100px; height: 100px; 
       object-fit: cover; border-radius: 50%; 
       margin: 0 auto 15px auto; 
       display: block; 
       border: 3px solid var(--accent); 
       box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-    
-    /* --- Updated Grid for Team Config with Upload Button --- */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 0.6fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
-    .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    @keyframes popIn { from{transform:scale(0);opacity:0;} to{transform:scale(1);opacity:1;} }
 
     @media (max-width:900px){.grid{grid-template-columns:1fr;}}
   </style>
@@ -145,11 +148,10 @@
       </div>
 
      <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
-       <div id="loginTeamLogoPreview"></div>
-
-      <label>Select Your Team</label>
-      <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
-    </div>
+       <div id="loginTeamLogoPreview" style="min-height:10px;"></div>
+       <label>Select Your Team</label>
+       <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
+     </div>
 
       <div id="passGroup" class="hidden" style="margin-bottom:15px;">
         <label>Team Password</label>
@@ -205,7 +207,7 @@
             </div>
             <div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
               <label>Team Settings & Passwords</label>
-              <div class="team-config-row team-config-header">
+              <div class="team-config-header">
                 <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Logo</span> <span>Reset</span> <span>Del</span>
               </div>
               <div id="teamsConfigContainer"></div>
@@ -348,7 +350,7 @@
 
     // Participant Connect Success (Go to Step 2)
     socket.on('init:teams_available', (data) => {
-        STATE.teams = data.teams; // Update local state for preview
+        STATE.teams = data.teams; 
         CURRENT_USER.hostId = data.hostId;
         const sel = document.getElementById('loginTeamId');
         sel.innerHTML = '<option value="">Select Team</option>';
@@ -358,6 +360,15 @@
         teamAuthOverlay.classList.remove('hidden');
     });
 
+    // --- TEAM AUTH LOGIC ---
+    function toggleTeamPass() {
+        const role = document.getElementById('loginRole').value;
+        const isTeam = role === 'team';
+        document.getElementById('teamSelectGroup').classList.toggle('hidden', !isTeam);
+        document.getElementById('passGroup').classList.toggle('hidden', !isTeam);
+    }
+
+    // LOGIC RESTORED: Preview logo in login screen
     function previewTeamLogo() {
       const id = document.getElementById('loginTeamId').value;
       const previewDiv = document.getElementById('loginTeamLogoPreview');
@@ -368,14 +379,6 @@
           previewDiv.innerHTML = `<img src="${team.logo}" class="team-logo-large">`;
         }
       }
-    }
-
-    // --- TEAM AUTH LOGIC ---
-    function toggleTeamPass() {
-        const role = document.getElementById('loginRole').value;
-        const isTeam = role === 'team';
-        document.getElementById('teamSelectGroup').classList.toggle('hidden', !isTeam);
-        document.getElementById('passGroup').classList.toggle('hidden', !isTeam);
     }
 
     function enterAuction() {
@@ -397,7 +400,6 @@
         setupUI();
         renderAll();
     });
-
 
     // --- MAIN APP LOGIC ---
 
@@ -438,7 +440,8 @@
       document.getElementById('animPlayer').textContent = name;
       document.getElementById('animTeam').textContent = teamName;
       document.getElementById('animPrice').textContent = price;
-      
+
+      // LOGIC RESTORED: Show logo in Sold Animation
       const animLogo = document.getElementById('animTeamLogo');
       if(teamLogo){
          animLogo.src = teamLogo;
@@ -509,7 +512,7 @@
       STATE.teams.forEach((t) => addTeamInputRow(t));
     }
 
-    // UPDATED: Team Input Row with Logo Upload
+    // LOGIC RESTORED: Added Upload Button and Image Preview
     function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500, logo:null}) {
       const row = document.createElement('div');
       row.className = 'team-config-row';
@@ -531,7 +534,7 @@
       teamsConfigContainer.appendChild(row);
     }
     
-    // NEW: Function to trigger file upload
+    // LOGIC RESTORED: The upload trigger function
     window.triggerUpload = (teamId, btnElement) => {
         if(!teamId) return alert("Save the team with an ID first!");
         
@@ -543,7 +546,7 @@
             if(!file) return;
 
             const formData = new FormData();
-            formData.append('teamLogo', file); // Matches server.js multer
+            formData.append('teamLogo', file); 
 
             btnElement.textContent = '...';
             
@@ -713,6 +716,7 @@
       });
     }
 
+    // LOGIC RESTORED: Render Scoreboard with logos
     function renderScoreboard() {
       scoreboardEl.innerHTML = '';
       STATE.teams.forEach(t => {
@@ -722,7 +726,7 @@
         
         let logoImg = '';
         if(t.logo) logoImg = `<img src="${t.logo}" class="team-logo">`;
-        
+
         div.innerHTML = `
            <div style="display:flex; align-items:center;">
              ${logoImg}
@@ -849,9 +853,7 @@
          const pass = row.querySelector('.t-pass').value.trim();
          const purse = row.querySelector('.t-purse').value;
          if(!id || !name) valid = false;
-         
-         // Note: We don't save the Logo from Inputs here, the backend preserves existing logo 
-         // unless 'admin:setTeamLogo' was called separately.
+         // Logo is not saved here, it uses the separate upload button
          newTeams.push({ id, name, password: pass, purse: Number(purse) });
       });
       if(!valid) return alert('ID and Name are required for all teams');
