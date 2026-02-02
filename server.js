@@ -96,13 +96,13 @@ async function loadFromFirebase() {
 }
 
 // --- UPLOAD ENDPOINT ---
-// Ensure the field name 'teamLogo' matches what the frontend FormData sends
-app.post('/upload', upload.single('teamLogo'), (req, res) => {
-    if (!req.file) {
+// Allows uploading either 'teamLogo' or 'playerImage'
+app.post('/upload', upload.any(), (req, res) => {
+    if (!req.files || req.files.length === 0) {
         return res.status(400).send('No file uploaded.');
     }
-    // Return the relative path for the frontend
-    res.json({ url: `/uploads/${req.file.filename}` });
+    // Return the relative path of the first file uploaded
+    res.json({ url: `/uploads/${req.files[0].filename}` });
 });
 
 // --- REAL-TIME LOGIC ---
@@ -172,6 +172,12 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- POP-UP SYNC EVENT (Restored) ---
+    socket.on('admin:reveal_player', (playerData) => {
+        // Broadcast to everyone (teams, guests, and other admins)
+        io.emit('popup:reveal', playerData);
+    });
+
     // 4. Admin Management
     socket.on('admin:updateConfig', (newConfig) => {
         if(newConfig.teams) {
@@ -217,6 +223,20 @@ io.on('connection', (socket) => {
         STATE.playersSnapshot[category] = mergedPlayers;
         io.emit('state:updated', STATE);
         saveToFirebase();
+    });
+
+    // --- UPDATE PLAYER IMAGE (Restored) ---
+    socket.on('admin:updatePlayerImage', ({ category, name, imageUrl }) => {
+        if (STATE.playersSnapshot && STATE.playersSnapshot[category]) {
+            const player = STATE.playersSnapshot[category].find(p => p.name === name);
+            if (player) {
+                player.image = imageUrl;
+                io.emit('state:updated', STATE); // Update list views
+                // Also force update the popup if it is currently open on anyone's screen
+                io.emit('popup:update_image', { category, name, imageUrl });
+                saveToFirebase();
+            }
+        }
     });
 
     socket.on('players:clear', ({ category }) => {
