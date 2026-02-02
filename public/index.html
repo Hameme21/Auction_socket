@@ -9,7 +9,7 @@
     *{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, Roboto, Arial}
     body{margin:0;background:linear-gradient(180deg,#071020 0%,#071827 60%);color:#e6eef8;min-height:100vh;}
     
-    /* --- Main Layout --- */
+    /* Layout */
     .container{max-width:1200px;margin:0 auto; padding: 18px;}
     h1{margin:0 0 10px;font-size:20px}
     .flex{display:flex;gap:12px;align-items:center}
@@ -18,14 +18,7 @@
     label{display:block;margin-bottom:6px;color:var(--muted);font-size:13px}
     textarea{width:100%;min-height:90px;background:var(--glass);border:1px solid rgba(255,255,255,0.03);padding:10px;border-radius:8px;color:inherit}
     
-    /* --- Portal & Overlays --- */
-    #portal, #teamAuthOverlay { position: fixed; inset: 0; z-index: 5000; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-direction: column; }
-    .portal-card { background: var(--card); padding: 30px; border-radius: 12px; width: 350px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); text-align: center; }
-    .tab-nav { display: flex; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    .tab { flex: 1; padding: 10px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
-    .tab.active { color: white; border-color: var(--accent); font-weight: bold; }
-    
-    /* --- Buttons & Inputs --- */
+    /* UI Elements */
     button{background:linear-gradient(90deg,var(--accent),#4f46e5);border:0;padding:8px 12px;color:white;border-radius:6px;cursor:pointer; font-size:13px; font-weight:600;}
     button:hover{filter:brightness(1.1)}
     button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.1)}
@@ -34,66 +27,42 @@
     button.yellow{background:#f59e0b;}
     button.blue{background:#3b82f6;}
     button.small{padding: 5px 10px; font-size: 11px;}
-    
     input, select { background:var(--glass); border:1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; width: 100%; margin-bottom: 10px; }
 
-    /* --- Player Card --- */
+    /* Player List Item */
     .players{margin-top:10px}
     .player{display:flex;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);margin-bottom:8px; border:1px solid transparent; transition:0.2s}
     .player.sold{opacity: 0.5; border-color: #7c3aed;}
     .player.bidding{border-color: #fbbf24; background: rgba(251, 191, 36, 0.1);}
-    .player.has-bid .price { color: #fbbf24; text-shadow: 0 0 5px rgba(251, 191, 36, 0.5); }
     
+    /* Admin Clickable Player */
+    .player.clickable { cursor: pointer; }
+    .player.clickable:hover { background: rgba(255,255,255,0.05); border-color: var(--accent); }
+
     .left{display:flex;align-items:center;gap:12px}
     .badge{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:8px;font-weight:700}
     .name{font-weight:600}
-    .price{font-size:18px;font-weight:700;}
+    /* Only showing Base Price in List View as requested */
+    .price{font-size:14px; color: var(--muted);}
     
-    /* --- Team Settings Grid --- */
-    /* UPDATED GRID COLUMNS */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 0.6fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
-    .team-config-header { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 0.6fr auto auto; font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    /* Config Grid */
+    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .team-config-header { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
-    /* --- Scoreboard --- */
+    /* Scoreboard */
     .team-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02); margin-bottom: 8px;}
-
-    /* --- Modals (Action / Sold) --- */
+    .team-logo { width: 30px; height: 30px; object-fit: cover; border-radius: 50%; margin-right: 10px; border: 1px solid rgba(255,255,255,0.3); background: #000; }
+    
+    /* Overlays */
     .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);z-index:4000;backdrop-filter:blur(5px);}
-    .modal{background:#0f172a;padding:25px;border-radius:12px;width:400px;max-width:90%;border:1px solid #1e293b; box-shadow: 0 20px 50px rgba(0,0,0,0.5);}
     .hidden{display:none !important;}
-
-    /* --- Toast --- */
-    #toastContainer {position: fixed; top: 20px; right: 20px; z-index: 6000; display: flex; flex-direction: column; gap: 10px;}
-    .toast {background: #1e293b; color: #fff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #7c3aed; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;}
-    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-    /* --- Hammer Animation --- */
-    #hammer{ 
-      width:120px; height:120px; 
-      transform-origin:20% 20%; 
-      pointer-events:none; 
-      position:fixed; left:50%; margin-left:-60px; top:40px; z-index:4500;
-      display: none; 
-    }
-    #hammer.swing{ display: block; animation: hammerSwing 560ms cubic-bezier(.2,.8,.2,1) forwards; }
-    @keyframes hammerSwing {
-      0% { transform: rotate(-35deg) translateY(-10px) translateX(-20px) scale(1); opacity: 0; }
-      10% { opacity: 1; }
-      30% { transform: rotate(25deg) translateY(8px) translateX(12px) scale(1.02); }
-      60% { transform: rotate(-10deg) translateY(-4px) translateX(-6px) scale(0.98); }
-      100% { transform: rotate(0deg) translateY(0px) translateX(0px) scale(1); opacity: 0; }
-    }
-
-    /* --- Sold Animation Overlay --- */
-    #soldAnimationOverlay { position: fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; display:flex; justify-content:center; align-items:center; }
-
-    /* --- Team Logo Styles --- */
-    .team-logo { 
-      width: 30px; height: 30px; 
-      object-fit: cover; border-radius: 50%; 
-      margin-right: 10px; 
-      border: 1px solid rgba(255,255,255,0.3); background: #000; vertical-align: middle;
-    }
+    
+    /* Login Portal */
+    #portal, #teamAuthOverlay { position: fixed; inset: 0; z-index: 5000; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-direction: column; }
+    .portal-card { background: var(--card); padding: 30px; border-radius: 12px; width: 350px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); text-align: center; }
+    .tab-nav { display: flex; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .tab { flex: 1; padding: 10px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+    .tab.active { color: white; border-color: var(--accent); font-weight: bold; }
     
     /* Login Panel Large Logo */
     .team-logo-large { 
@@ -107,6 +76,54 @@
     }
     @keyframes popIn { from{transform:scale(0);opacity:0;} to{transform:scale(1);opacity:1;} }
 
+
+    /* --- ACTIVE PLAYER POPUP STYLES --- */
+    #activePlayerPopup .card-content { 
+        text-align: center; width: 500px; max-width: 90%; 
+        background: #0f172a; padding: 30px; border-radius: 16px; 
+        border: 1px solid #1e293b; 
+        box-shadow: 0 20px 100px rgba(0,0,0,0.8);
+        position: relative;
+    }
+    .popup-image-container {
+        width: 200px; height: 200px; margin: 0 auto 20px;
+        border-radius: 50%; border: 4px solid var(--accent);
+        overflow: hidden; background: #000; position: relative;
+    }
+    .popup-image-container img { width: 100%; height: 100%; object-fit: cover; }
+    
+    /* Drag and Drop Zone */
+    .drop-zone-overlay {
+        position: absolute; inset: 0; background: rgba(0,0,0,0.7);
+        display: flex; align-items: center; justify-content: center;
+        opacity: 0; transition: 0.2s; cursor: pointer; color: white; font-size: 12px; text-align: center;
+    }
+    .popup-image-container:hover .drop-zone-overlay { opacity: 1; }
+    
+    .popup-name { font-size: 32px; font-weight: 800; margin-bottom: 5px; color: white; }
+    .popup-cat { color: var(--accent); font-weight: bold; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px;}
+    
+    .popup-price-box { 
+        background: rgba(255,255,255,0.05); padding: 15px; 
+        border-radius: 12px; margin-bottom: 20px; 
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    .popup-price-label { font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .popup-price-val { font-size: 40px; font-weight: 900; color: #fbbf24; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3); }
+
+    .popup-controls { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+    .close-btn { position: absolute; top: 15px; right: 15px; background: transparent; color: var(--muted); font-size: 20px; padding: 5px; }
+
+    /* Hammer & Animation */
+    #hammer{ width:120px; height:120px; pointer-events:none; position:fixed; left:50%; margin-left:-60px; top:40px; z-index:4500; display: none; }
+    #hammer.swing{ display: block; animation: hammerSwing 560ms cubic-bezier(.2,.8,.2,1) forwards; }
+    @keyframes hammerSwing { 0% { transform: rotate(-35deg) translateY(-10px) translateX(-20px); opacity: 0; } 10% { opacity: 1; } 30% { transform: rotate(25deg) translateY(8px) translateX(12px); } 60% { transform: rotate(-10deg) translateY(-4px); } 100% { transform: rotate(0deg); opacity: 0; } }
+
+    /* Toasts */
+    #toastContainer {position: fixed; top: 20px; right: 20px; z-index: 6000; display: flex; flex-direction: column; gap: 10px;}
+    .toast {background: #1e293b; color: #fff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #7c3aed; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;}
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
     @media (max-width:900px){.grid{grid-template-columns:1fr;}}
   </style>
 </head>
@@ -119,26 +136,23 @@
         <div class="tab active" onclick="switchTab('manager')">Manager Login</div>
         <div class="tab" onclick="switchTab('participant')">Join Auction</div>
       </div>
-
       <div id="managerForm">
         <input id="mUser" placeholder="Username (Host ID)">
         <input id="mPass" type="password" placeholder="Password">
         <button onclick="managerLogin()" style="width:100%">Login / Load Auction</button>
         <button onclick="managerRegister()" class="ghost" style="width:100%; margin-top:5px; font-size:12px">Create New Account</button>
       </div>
-
       <div id="participantForm" class="hidden">
         <input id="pHostId" placeholder="Enter Host ID (Manager Username)">
         <button onclick="connectToHost()" style="width:100%">Connect</button>
       </div>
-      
       <div id="portalMsg" style="color:#ef4444; margin-top:10px; font-size:13px;"></div>
     </div>
   </div>
 
   <div id="teamAuthOverlay" class="hidden">
     <div class="portal-card">
-      <h3 style="margin-top:0">Auction Room Login</h3>
+      <h3>Auction Room Login</h3>
       <div style="margin-bottom:15px;">
         <label>Your Role</label>
         <select id="loginRole" onchange="toggleTeamPass()">
@@ -146,13 +160,11 @@
           <option value="team">Team Representative</option>
         </select>
       </div>
-
-     <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
-       <div id="loginTeamLogoPreview" style="min-height:10px;"></div>
-       <label>Select Your Team</label>
-       <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
-     </div>
-
+      <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
+        <div id="loginTeamLogoPreview" style="min-height:10px;"></div>
+        <label>Select Your Team</label>
+        <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
+      </div>
       <div id="passGroup" class="hidden" style="margin-bottom:15px;">
         <label>Team Password</label>
         <input type="password" id="loginPass">
@@ -163,8 +175,37 @@
   </div>
 
   <div id="appContainer" class="hidden">
-    
     <div id="toastContainer"></div>
+
+    <div class="overlay hidden" id="activePlayerOverlay">
+        <div class="card-content" id="activePlayerCard">
+            <button class="close-btn hidden" id="adminClosePopupBtn" onclick="closePopupAdmin()">✕</button>
+            
+            <div class="popup-image-container" id="popupImageContainer">
+                <img id="popupImg" src="https://via.placeholder.com/200?text=No+Image">
+                <div class="drop-zone-overlay hidden" id="adminDropZone">
+                    Drag & Drop Image Here<br>to Upload
+                </div>
+            </div>
+
+            <div class="popup-name" id="popupName">Player Name</div>
+            <div class="popup-cat" id="popupCat">CATEGORY A</div>
+
+            <div class="popup-price-box">
+                <div class="popup-price-label">Current Bid</div>
+                <div class="popup-price-val" id="popupPrice">0</div>
+            </div>
+
+            <div class="popup-controls hidden" id="adminControls">
+                <button class="blue" onclick="popupBidIncrement()">+ Increment</button>
+                <button class="green" onclick="openSoldConfirmationFromPopup()">SOLD</button>
+            </div>
+            
+            <div class="popup-controls hidden" id="teamControls">
+                <button class="ghost" onclick="popupBidRequest()">Request Bid</button>
+            </div>
+        </div>
+    </div>
 
     <div class="overlay hidden" id="soldActionOverlay">
       <div class="modal">
@@ -175,73 +216,6 @@
         <div class="flex" style="justify-content:flex-end">
           <button id="btnCancelSold" class="ghost">Cancel</button>
           <button id="btnConfirmSold" class="green">Confirm Sale</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="container">
-      <div class="banner" style="display:flex; justify-content:space-between; align-items:start;">
-        <div>
-          <h1>Players Auction System</h1>
-          <div class="small" id="roleDisplay" style="color:var(--muted)">Not Logged In</div>
-        </div>
-        <div class="flex">
-          <button id="btnExportAdmin" class="blue hidden" style="font-size:11px; padding:4px 8px; margin-right:5px;">Export Data (CSV)</button>
-          <button id="btnResetSystem" class="red hidden" style="font-size:11px; padding:4px 8px;">Reset System</button>
-          <button onclick="location.reload()" class="ghost" style="font-size:11px; padding:4px 8px;">Logout</button>
-        </div>
-      </div>
-
-      <div class="grid">
-        <div>
-          <div class="card hidden" id="adminConfigCard">
-            <strong>Admin Configuration</strong>
-            <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
-              <label>Add Category</label>
-              <div class="flex">
-                <input id="newCatId" placeholder="ID (e.g. A)" style="width:80px; margin:0">
-                <input id="newCatBase" placeholder="Base" type="number" style="margin:0">
-                <input id="newCatInc" placeholder="Inc" type="number" style="margin:0">
-                <button id="btnAddCat" class="small">Add</button>
-              </div>
-            </div>
-            <div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
-              <label>Team Settings & Passwords</label>
-              <div class="team-config-header">
-                <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Logo</span> <span>Reset</span> <span>Del</span>
-              </div>
-              <div id="teamsConfigContainer"></div>
-              <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px; width:100%">+ Add Team Slot</button>
-              <button id="btnSaveTeams" class="green small" style="margin-top:8px; width:100%">Save All Team Changes</button>
-            </div>
-          </div>
-
-          <div class="card">
-            <strong>Players & Categories</strong>
-            <div id="categoriesContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:12px;margin-top:10px">
-               <div class="small" id="emptyMsg" style="color:var(--muted); padding:10px;">No categories yet. Admin please add one above.</div>
-            </div>
-          </div>
-
-          <div class="card">
-            <strong>Auction Log</strong>
-            <div id="log" class="log" style="max-height:150px; overflow-y:auto; font-size:12px; color:var(--muted)"></div>
-            <button id="clearLog" class="ghost small" style="margin-top:8px">Clear Log</button>
-          </div>
-        </div>
-
-        <div>
-          <div class="card">
-            <strong>Live Scoreboard</strong>
-            <div id="scoreboard" style="margin-top:10px"></div>
-          </div>
-          <div class="card hidden" id="myTeamCard">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong>My Team Dashboard</strong>
-              <button id="btnExportTeam" class="ghost" style="font-size:10px; padding:2px 6px;">Export CSV</button>
-            </div>
-            <div id="myTeamContent" style="margin-top:10px"></div>
-          </div>
         </div>
       </div>
     </div>
@@ -257,652 +231,582 @@
       </div>
     </div>
 
-    <img id="hammer" src="/hammer.png" alt="hammer" onerror="this.style.display='none'" />
+    <img id="hammer" src="/hammer.png" onerror="this.style.display='none'" />
     <audio id="hammerAudio" src="/hammer.wav"></audio>
+
+    <div class="container">
+      <div class="banner" style="display:flex; justify-content:space-between; align-items:start;">
+        <div>
+          <h1>Players Auction System</h1>
+          <div class="small" id="roleDisplay" style="color:var(--muted)">Not Logged In</div>
+        </div>
+        <div class="flex">
+          <button id="btnExportAdmin" class="blue hidden" style="font-size:11px;">Export CSV</button>
+          <button id="btnResetSystem" class="red hidden" style="font-size:11px;">Reset System</button>
+          <button onclick="location.reload()" class="ghost" style="font-size:11px;">Logout</button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div>
+          <div class="card hidden" id="adminConfigCard">
+            <strong>Admin Configuration</strong>
+            <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+              <label>Add Category</label>
+              <div class="flex">
+                <input id="newCatId" placeholder="ID" style="width:80px; margin:0">
+                <input id="newCatBase" placeholder="Base" type="number" style="margin:0">
+                <input id="newCatInc" placeholder="Inc" type="number" style="margin:0">
+                <button id="btnAddCat" class="small">Add</button>
+              </div>
+            </div>
+            <div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+              <label>Teams</label>
+              <div class="team-config-header">
+                <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Logo</span> <span>Reset</span> <span>Del</span>
+              </div>
+              <div id="teamsConfigContainer"></div>
+              <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px; width:100%">+ Add Team</button>
+              <button id="btnSaveTeams" class="green small" style="margin-top:8px; width:100%">Save Teams</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <strong>Players & Categories</strong>
+            <div id="categoriesContainer" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:12px;margin-top:10px"></div>
+          </div>
+
+          <div class="card">
+            <strong>Log</strong>
+            <div id="log" class="log" style="max-height:150px; overflow-y:auto; font-size:12px; color:var(--muted)"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <strong>Live Scoreboard</strong>
+            <div id="scoreboard" style="margin-top:10px"></div>
+          </div>
+          <div class="card hidden" id="myTeamCard">
+            <strong>My Team Dashboard</strong>
+            <div id="myTeamContent" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  
   <script>
     const socket = io();
     
     // -- Global State --
     let CURRENT_USER = { role: null, teamId: null, hostId: null };
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {} };
-    let pendingSold = null;
+    let activePlayerData = null; // Data for the currently open popup
 
     // -- Elements --
     const portal = document.getElementById('portal');
     const teamAuthOverlay = document.getElementById('teamAuthOverlay');
     const appContainer = document.getElementById('appContainer');
-    
     const categoriesContainer = document.getElementById('categoriesContainer');
     const scoreboardEl = document.getElementById('scoreboard');
-    const adminConfigCard = document.getElementById('adminConfigCard');
-    const myTeamCard = document.getElementById('myTeamCard');
-    const logEl = document.getElementById('log');
-    const teamsConfigContainer = document.getElementById('teamsConfigContainer');
     const toastContainer = document.getElementById('toastContainer');
-    const hammer = document.getElementById('hammer');
-    const btnResetSystem = document.getElementById('btnResetSystem');
-    const btnExportAdmin = document.getElementById('btnExportAdmin');
-    const btnExportTeam = document.getElementById('btnExportTeam');
-
-    // Hammer Reset Listener
-    if(hammer) {
-      hammer.addEventListener('animationend', () => {
-        hammer.classList.remove('swing');
-        hammer.style.display = 'none';
-      });
-    }
-
-    // --- PORTAL LOGIC ---
+    
+    // --- AUTH LOGIC (Standard) ---
     function switchTab(tab) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelector(`.tab[onclick="switchTab('${tab}')"]`).classList.add('active');
-        if(tab === 'manager') {
-            document.getElementById('managerForm').classList.remove('hidden');
-            document.getElementById('participantForm').classList.add('hidden');
-        } else {
-            document.getElementById('managerForm').classList.add('hidden');
-            document.getElementById('participantForm').classList.remove('hidden');
-        }
+        document.getElementById('managerForm').classList.toggle('hidden', tab !== 'manager');
+        document.getElementById('participantForm').classList.toggle('hidden', tab !== 'participant');
+    }
+    function managerLogin() { socket.emit('manager:login', { username: document.getElementById('mUser').value, password: document.getElementById('mPass').value }); }
+    function managerRegister() { socket.emit('manager:register', { username: document.getElementById('mUser').value, password: document.getElementById('mPass').value }); }
+    function connectToHost() { socket.emit('participant:connect', document.getElementById('pHostId').value); }
+    function enterAuction() { 
+        socket.emit('team:login', { 
+            hostId: CURRENT_USER.hostId, 
+            teamId: document.getElementById('loginTeamId').value, 
+            password: document.getElementById('loginPass').value, 
+            role: document.getElementById('loginRole').value 
+        }); 
+    }
+    function toggleTeamPass() {
+        const isTeam = document.getElementById('loginRole').value === 'team';
+        document.getElementById('teamSelectGroup').classList.toggle('hidden', !isTeam);
+        document.getElementById('passGroup').classList.toggle('hidden', !isTeam);
+    }
+    function previewTeamLogo() {
+      const id = document.getElementById('loginTeamId').value;
+      const t = STATE.teams.find(x => x.id === id);
+      document.getElementById('loginTeamLogoPreview').innerHTML = t && t.logo ? `<img src="${t.logo}" class="team-logo-large">` : '';
     }
 
-    function managerRegister() {
-        const u = document.getElementById('mUser').value;
-        const p = document.getElementById('mPass').value;
-        if(!u || !p) return alert('Enter Username and Password');
-        socket.emit('manager:register', { username: u, password: p });
-    }
-
-    function managerLogin() {
-        const u = document.getElementById('mUser').value;
-        const p = document.getElementById('mPass').value;
-        if(!u || !p) return alert('Enter Username and Password');
-        socket.emit('manager:login', { username: u, password: p });
-    }
-
-    function connectToHost() {
-        const h = document.getElementById('pHostId').value;
-        if(!h) return alert('Enter Host ID');
-        socket.emit('participant:connect', h);
-    }
-
-    // Portal Responses
+    // --- SOCKET LISTENERS ---
     socket.on('auth:portal_error', (msg) => document.getElementById('portalMsg').textContent = msg);
-    socket.on('auth:portal_success', (data) => {
-        const el = document.getElementById('portalMsg');
-        el.style.color = '#10b981';
-        el.textContent = data.msg;
-    });
+    socket.on('auth:team_error', (msg) => document.getElementById('teamAuthMsg').textContent = msg);
+    socket.on('auth:portal_success', (data) => document.getElementById('portalMsg').textContent = data.msg);
 
-    // Manager Login Success
     socket.on('manager:logged_in', (data) => {
-        CURRENT_USER.hostId = data.username;
-        CURRENT_USER.role = 'admin';
+        CURRENT_USER = { hostId: data.username, role: 'admin' };
         STATE = data.state;
-        portal.classList.add('hidden');
-        appContainer.classList.remove('hidden');
-        setupUI();
-        renderAll();
+        initApp();
     });
 
-    // Participant Connect Success (Go to Step 2)
     socket.on('init:teams_available', (data) => {
-        STATE.teams = data.teams; 
+        STATE.teams = data.teams;
         CURRENT_USER.hostId = data.hostId;
         const sel = document.getElementById('loginTeamId');
         sel.innerHTML = '<option value="">Select Team</option>';
         data.teams.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
-        
         portal.classList.add('hidden');
         teamAuthOverlay.classList.remove('hidden');
     });
 
-    // --- TEAM AUTH LOGIC ---
-    function toggleTeamPass() {
-        const role = document.getElementById('loginRole').value;
-        const isTeam = role === 'team';
-        document.getElementById('teamSelectGroup').classList.toggle('hidden', !isTeam);
-        document.getElementById('passGroup').classList.toggle('hidden', !isTeam);
-    }
-
-    // LOGIC RESTORED: Preview logo in login screen
-    function previewTeamLogo() {
-      const id = document.getElementById('loginTeamId').value;
-      const previewDiv = document.getElementById('loginTeamLogoPreview');
-      previewDiv.innerHTML = '';
-      if(id) {
-        const team = STATE.teams.find(t => t.id === id);
-        if(team && team.logo) {
-          previewDiv.innerHTML = `<img src="${team.logo}" class="team-logo-large">`;
-        }
-      }
-    }
-
-    function enterAuction() {
-        const role = document.getElementById('loginRole').value;
-        const teamId = document.getElementById('loginTeamId').value;
-        const pass = document.getElementById('loginPass').value;
-        
-        socket.emit('team:login', { hostId: CURRENT_USER.hostId, teamId, password: pass, role });
-    }
-
-    socket.on('auth:team_error', (msg) => document.getElementById('teamAuthMsg').textContent = msg);
-    
     socket.on('auction:enter', (data) => {
-        CURRENT_USER.role = data.role;
-        CURRENT_USER.teamId = data.teamId;
+        CURRENT_USER = { ...CURRENT_USER, role: data.role, teamId: data.teamId };
         STATE = data.state;
+        initApp();
+    });
+
+    function initApp() {
+        portal.classList.add('hidden');
         teamAuthOverlay.classList.add('hidden');
         appContainer.classList.remove('hidden');
-        setupUI();
+        document.getElementById('roleDisplay').textContent = `Role: ${CURRENT_USER.role.toUpperCase()}`;
+        
+        if(CURRENT_USER.role === 'admin') {
+            document.getElementById('adminConfigCard').classList.remove('hidden');
+            document.getElementById('btnResetSystem').classList.remove('hidden');
+            document.getElementById('btnExportAdmin').classList.remove('hidden');
+            renderTeamConfigForm();
+            setupDragAndDrop(); // Init drag and drop for admin
+        }
+        if(CURRENT_USER.role === 'team') document.getElementById('myTeamCard').classList.remove('hidden');
+        renderAll();
+    }
+
+    // --- CORE SOCKET UPDATES ---
+    socket.on('state:updated', (newState) => {
+        STATE = newState;
+        renderAll();
+        if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
+    });
+
+    // --- POPUP LOGIC (THE NEW PART) ---
+    
+    // 1. Open Popup for everyone
+    socket.on('popup:open', (playerData) => {
+        activePlayerData = playerData;
+        const overlay = document.getElementById('activePlayerOverlay');
+        const img = document.getElementById('popupImg');
+        const name = document.getElementById('popupName');
+        const cat = document.getElementById('popupCat');
+        const price = document.getElementById('popupPrice');
+        
+        name.textContent = playerData.name;
+        cat.textContent = `Category: ${playerData.category}`;
+        img.src = playerData.image || 'https://via.placeholder.com/200?text=No+Image';
+        
+        // Determine current price (Sold Price > Active Bid > Base Price)
+        const key = `${playerData.category}:${playerData.name}`;
+        const currentPrice = STATE.soldPrices[key] || STATE.activeBids[key] || playerData.price;
+        price.textContent = currentPrice;
+
+        // Show/Hide Controls based on Role
+        if(CURRENT_USER.role === 'admin') {
+            document.getElementById('adminClosePopupBtn').classList.remove('hidden');
+            document.getElementById('adminDropZone').classList.remove('hidden');
+            document.getElementById('adminControls').classList.remove('hidden');
+        } else if (CURRENT_USER.role === 'team') {
+            document.getElementById('teamControls').classList.remove('hidden');
+        }
+        
+        overlay.classList.remove('hidden');
+    });
+
+    // 2. Close Popup for everyone
+    socket.on('popup:close', () => {
+        activePlayerData = null;
+        document.getElementById('activePlayerOverlay').classList.add('hidden');
+        // Reset controls visibility
+        document.getElementById('adminControls').classList.add('hidden');
+        document.getElementById('teamControls').classList.add('hidden');
+        document.getElementById('adminDropZone').classList.add('hidden');
+        document.getElementById('adminClosePopupBtn').classList.add('hidden');
+    });
+
+    // 3. Update Image inside popup (Real-time)
+    socket.on('popup:update_image', (data) => {
+        const img = document.getElementById('popupImg');
+        img.src = data.imageUrl + '?t=' + new Date().getTime(); // Anti-cache
+    });
+
+    // 4. Update Price inside popup (Real-time)
+    socket.on('player:bid', (data) => {
+        // If popup is open and matches player
+        if(activePlayerData && activePlayerData.name === data.name && activePlayerData.category === data.category) {
+            document.getElementById('popupPrice').textContent = data.price;
+            // Add a visual flash effect
+            const box = document.querySelector('.popup-price-box');
+            box.style.borderColor = '#fbbf24';
+            setTimeout(() => box.style.borderColor = 'rgba(255,255,255,0.1)', 300);
+            log(`BID: ${data.name} -> ${data.price}`);
+        }
+        // Also update list view
         renderAll();
     });
 
-    // --- MAIN APP LOGIC ---
-
-    socket.on('state:updated', (newState) => {
-      STATE = newState;
-      renderAll();
-      if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
-    });
-
-    socket.on('player:bid', (pl) => {
-      const el = getPlayerEl(pl.category, pl.name);
-      if(el) {
-        el.dataset.price = pl.price;
-        el.querySelector('.price').textContent = pl.price;
-        el.classList.add('bidding');
-        el.classList.add('has-bid'); 
-        setTimeout(()=>el.classList.remove('bidding'), 300);
-      }
-      log(`BID: ${pl.name} (${pl.category}) is now ${pl.price}`);
-    });
-
+    // 5. Player Sold (Close popup, show animation)
     socket.on('player:sold', (data) => {
-      const { category, name, price, teamId } = data.payload;
-      STATE.teams = data.teams;
-      
-      const el = getPlayerEl(category, name);
-      if(el) {
-        el.classList.add('sold');
-        el.classList.remove('has-bid');
-        const actionDiv = el.querySelector('.actions');
-        if(actionDiv) actionDiv.innerHTML = `<div class="small" style="color:#7c3aed">Sold to ${teamId}</div>`;
-      }
-      
-      const team = STATE.teams.find(t=>t.id===teamId);
-      const teamName = team?.name || teamId;
-      const teamLogo = team?.logo;
+        const { category, name, price, teamId } = data.payload;
+        STATE.teams = data.teams;
+        
+        // Popup closes automatically via server event before this triggers usually, 
+        // but ensure it's closed here too.
+        document.getElementById('activePlayerOverlay').classList.add('hidden');
 
-      document.getElementById('animPlayer').textContent = name;
-      document.getElementById('animTeam').textContent = teamName;
-      document.getElementById('animPrice').textContent = price;
+        // Animation Logic
+        const teamName = STATE.teams.find(t=>t.id===teamId)?.name || teamId;
+        const teamLogo = STATE.teams.find(t=>t.id===teamId)?.logo;
+        
+        document.getElementById('animPlayer').textContent = name;
+        document.getElementById('animTeam').textContent = teamName;
+        document.getElementById('animPrice').textContent = price;
+        const animLogo = document.getElementById('animTeamLogo');
+        if(teamLogo) { animLogo.src = teamLogo; animLogo.style.display = 'block'; } 
+        else { animLogo.style.display = 'none'; }
+        
+        const animOverlay = document.getElementById('soldAnimationOverlay');
+        animOverlay.classList.remove('hidden');
+        
+        const audio = document.getElementById('hammerAudio');
+        audio.currentTime = 0; audio.play().catch(e=>{});
+        
+        const hammer = document.getElementById('hammer');
+        hammer.style.display = 'block'; hammer.classList.remove('swing');
+        void hammer.offsetWidth; hammer.classList.add('swing');
 
-      // LOGIC RESTORED: Show logo in Sold Animation
-      const animLogo = document.getElementById('animTeamLogo');
-      if(teamLogo){
-         animLogo.src = teamLogo;
-         animLogo.style.display = 'block';
-      } else {
-         animLogo.style.display = 'none';
-      }
-      
-      const animOverlay = document.getElementById('soldAnimationOverlay');
-      animOverlay.classList.remove('hidden');
-      
-      const audio = document.getElementById('hammerAudio');
-      if(audio) { 
-        audio.pause(); 
-        audio.currentTime = 0; 
-        audio.play().catch(e=>console.log(e)); 
-      }
+        setTimeout(() => {
+            animOverlay.classList.add('hidden');
+            hammer.style.display = 'none';
+        }, 3500);
 
-      hammer.style.display = 'block';
-      hammer.classList.remove('swing');
-      void hammer.offsetWidth; 
-      hammer.classList.add('swing');
-
-      setTimeout(() => animOverlay.classList.add('hidden'), 3500);
-      renderScoreboard();
-      renderMyTeam();
-      log(`SOLD: ${name} to ${teamName} for ${price}`);
+        renderAll();
     });
 
-    socket.on('admin:toast', (data) => {
-      if(CURRENT_USER.role === 'admin') showToast(data.msg);
-    });
-
-    socket.on('players:load', (d) => renderCategoryPlayers(d.category, d.players));
-
-    // -- Rendering --
-
-    function setupUI() {
-      document.getElementById('roleDisplay').textContent = `Host: ${CURRENT_USER.hostId} | Role: ${CURRENT_USER.role.toUpperCase()}`;
-      if(CURRENT_USER.role === 'admin') {
-        adminConfigCard.classList.remove('hidden');
-        btnResetSystem.classList.remove('hidden');
-        btnExportAdmin.classList.remove('hidden'); 
-        renderTeamConfigForm();
-      } else {
-        btnResetSystem.classList.add('hidden');
-        btnExportAdmin.classList.add('hidden');
-      }
-      if (CURRENT_USER.role === 'team') myTeamCard.classList.remove('hidden');
+    // --- POPUP INTERACTIONS ---
+    
+    // Admin clicks player in list
+    function adminSelectPlayer(catId, name, basePrice, currentImage) {
+        if(CURRENT_USER.role !== 'admin') return;
+        socket.emit('admin:select_player', { category: catId, name, price: basePrice, image: currentImage });
     }
 
+    function closePopupAdmin() {
+        socket.emit('admin:close_popup');
+    }
+
+    function popupBidIncrement() {
+        if(!activePlayerData) return;
+        const catConfig = STATE.categories.find(c => c.id === activePlayerData.category);
+        const currentVal = Number(document.getElementById('popupPrice').textContent);
+        const nextPrice = currentVal + (catConfig ? Number(catConfig.increment) : 0);
+        socket.emit('player:bid', { category: activePlayerData.category, name: activePlayerData.name, price: nextPrice });
+    }
+
+    function popupBidRequest() {
+        if(!activePlayerData) return;
+        const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
+        if(myTeam) socket.emit('bid:request', { category: activePlayerData.category, playerName: activePlayerData.name, teamName: myTeam.name });
+    }
+
+    function openSoldConfirmationFromPopup() {
+        if(!activePlayerData) return;
+        const currentPrice = document.getElementById('popupPrice').textContent;
+        openSoldConfirmation(activePlayerData.category, activePlayerData.name, currentPrice);
+    }
+
+    // --- DRAG & DROP UPLOAD LOGIC ---
+    function setupDragAndDrop() {
+        const dropZone = document.getElementById('popupImageContainer');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        dropZone.addEventListener('drop', async (e) => {
+            if(CURRENT_USER.role !== 'admin' || !activePlayerData) return;
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if(files.length > 0) {
+                const formData = new FormData();
+                formData.append('image', files[0]);
+                
+                // Visual feedback
+                document.getElementById('adminDropZone').textContent = "Uploading...";
+                
+                try {
+                    const res = await fetch('/upload', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    
+                    socket.emit('admin:update_player_image', {
+                        category: activePlayerData.category,
+                        name: activePlayerData.name,
+                        imageUrl: data.url
+                    });
+                    
+                    document.getElementById('adminDropZone').innerHTML = "Drag & Drop Image Here<br>to Upload";
+                } catch(err) {
+                    alert("Upload Failed");
+                    document.getElementById('adminDropZone').textContent = "Error!";
+                }
+            }
+        });
+    }
+
+    // --- RENDERING ---
+
     function renderAll() {
-      renderCategoriesStructure();
-      renderScoreboard();
-      renderMyTeam();
-      
-      Object.keys(STATE.playersSnapshot).forEach(catId => {
-        renderCategoryPlayers(catId, STATE.playersSnapshot[catId]);
-        const ta = document.getElementById(`ta-${catId}`);
-        if(ta && document.activeElement !== ta) {
-             ta.value = STATE.playersSnapshot[catId].map(p=>p.name).join('\n');
-        }
-      });
+        renderCategories();
+        renderScoreboard();
+        if(CURRENT_USER.role === 'team') renderMyTeam();
+    }
+
+    function renderCategories() {
+        categoriesContainer.innerHTML = '';
+        if(STATE.categories.length === 0) categoriesContainer.innerHTML = '<div style="padding:10px; color:#aaa">No Categories.</div>';
+        
+        STATE.categories.forEach(cat => {
+            const div = document.createElement('div');
+            
+            // Admin Controls for Category
+            let header = `<span class="small">Base: ${cat.base} | Inc: ${cat.increment}</span>`;
+            if(CURRENT_USER.role === 'admin') header += `<button class="red small" onclick="deleteCat('${cat.id}')" style="margin-left:5px">X</button>`;
+
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                    <label style="color:white; font-weight:bold; margin:0">Category ${cat.id}</label>
+                    <div>${header}</div>
+                </div>
+                ${CURRENT_USER.role === 'admin' ? 
+                `<textarea id="ta-${cat.id}" class="cat-ta" placeholder="Enter players..." onblur="saveCat('${cat.id}')"></textarea>` : ''}
+                <div class="players" id="playersList-${cat.id}"></div>
+            `;
+            categoriesContainer.appendChild(div);
+
+            // Populate Textarea if Admin
+            if(CURRENT_USER.role === 'admin') {
+                const ta = div.querySelector('textarea');
+                const pList = STATE.playersSnapshot[cat.id] || [];
+                // Only update if not focused to avoid overwriting typing
+                if(document.activeElement !== ta) ta.value = pList.map(p => p.name).join('\n');
+            }
+
+            renderPlayerList(cat.id);
+        });
+    }
+
+    function renderPlayerList(catId) {
+        const list = document.getElementById(`playersList-${catId}`);
+        list.innerHTML = '';
+        const players = STATE.playersSnapshot[catId] || [];
+        const catConfig = STATE.categories.find(c => c.id === catId);
+
+        players.forEach(p => {
+            const isSold = Object.values(STATE.teams).some(t => t.purchases && t.purchases[catId] === p.name);
+            const soldTeam = STATE.teams.find(t => t.purchases && t.purchases[catId] === p.name);
+            const key = `${catId}:${p.name}`;
+            const price = STATE.soldPrices[key] || STATE.activeBids[key] || p.price || catConfig.base;
+
+            const el = document.createElement('div');
+            // Add clickable class for Admin
+            el.className = `player ${isSold ? 'sold' : ''} ${CURRENT_USER.role === 'admin' ? 'clickable' : ''}`;
+            
+            // On Click Logic
+            if(CURRENT_USER.role === 'admin' && !isSold) {
+                el.onclick = () => adminSelectPlayer(catId, p.name, catConfig.base, p.image);
+            }
+
+            el.innerHTML = `
+                <div class="left">
+                    <div class="badge">${catId}</div>
+                    <div class="name">${p.name}</div>
+                </div>
+                <div class="right" style="text-align:right">
+                    <div class="price">Base: ${catConfig.base}</div>
+                    ${isSold ? `<div style="color:#7c3aed; font-size:11px; font-weight:bold">Sold to ${soldTeam.name}</div>` : ''}
+                    ${!isSold && STATE.activeBids[key] ? `<div style="color:#fbbf24; font-size:11px">Bid: ${STATE.activeBids[key]}</div>` : ''}
+                </div>
+            `;
+            
+            // Add Reset button for Admin
+            if(CURRENT_USER.role === 'admin') {
+                const btn = document.createElement('button');
+                btn.className = "yellow small";
+                btn.innerText = "↺";
+                btn.style.marginLeft = "10px";
+                btn.onclick = (e) => { e.stopPropagation(); resetPlayer(catId, p.name); };
+                el.querySelector('.right').appendChild(btn);
+            }
+
+            list.appendChild(el);
+        });
+    }
+
+    function renderScoreboard() {
+        scoreboardEl.innerHTML = '';
+        STATE.teams.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'team-row';
+            const count = t.purchases ? Object.keys(t.purchases).length : 0;
+            const logo = t.logo ? `<img src="${t.logo}" class="team-logo">` : '';
+            div.innerHTML = `
+                <div style="display:flex;align-items:center">${logo}<strong>${t.name}</strong></div>
+                <div style="text-align:right"><div>৳ ${t.purse}</div><div class="small" style="color:#888">${count} Players</div></div>
+            `;
+            scoreboardEl.appendChild(div);
+        });
+    }
+
+    function renderMyTeam() {
+        const t = STATE.teams.find(x => x.id === CURRENT_USER.teamId);
+        const div = document.getElementById('myTeamContent');
+        if(!t) return;
+        let html = `<h2 style="margin:0 0 10px">Purse: ${t.purse}</h2>`;
+        if(t.purchases) Object.entries(t.purchases).forEach(([c, n]) => html += `<div style="border-bottom:1px solid #333; padding:5px">[${c}] ${n}</div>`);
+        div.innerHTML = html;
     }
 
     function renderTeamConfigForm() {
-      teamsConfigContainer.innerHTML = '';
-      STATE.teams.forEach((t) => addTeamInputRow(t));
+        const container = document.getElementById('teamsConfigContainer');
+        container.innerHTML = '';
+        STATE.teams.forEach(t => {
+            const row = document.createElement('div');
+            row.className = 'team-config-row';
+            const logo = t.logo ? `<img src="${t.logo}" style="width:25px;height:25px;border-radius:50%">` : '-';
+            row.innerHTML = `
+                <input class="t-id" value="${t.id}">
+                <input class="t-name" value="${t.name}">
+                <input class="t-pass" value="${t.password}">
+                <input class="t-purse" type="number" value="${t.purse}">
+                <div style="display:flex;align-items:center;gap:5px">${logo}<button class="blue small" onclick="triggerUpload('${t.id}', this)">Up</button></div>
+                <button class="yellow small" onclick="alert('Edit purse to reset')">↺</button>
+                <button class="red small" onclick="this.parentElement.remove()">X</button>
+            `;
+            container.appendChild(row);
+        });
     }
 
-    // LOGIC RESTORED: Added Upload Button and Image Preview
-    function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500, logo:null}) {
-      const row = document.createElement('div');
-      row.className = 'team-config-row';
-      
-      const logoHTML = teamData.logo ? `<img src="${teamData.logo}" style="width:25px; height:25px; border-radius:50%">` : '<span class="small">-</span>';
-
-      row.innerHTML = `
-        <input class="t-id" value="${teamData.id || ''}" placeholder="ID">
-        <input class="t-name" value="${teamData.name || ''}" placeholder="Name">
-        <input class="t-pass" value="${teamData.password || ''}" placeholder="Pass">
-        <input class="t-purse" type="number" value="${teamData.purse}" placeholder="Purse">
-        <div style="display:flex; align-items:center; gap:5px;">
-           ${logoHTML}
-           <button class="blue small" title="Upload Logo" onclick="triggerUpload('${teamData.id}', this)">Up</button>
-        </div>
-        <button class="yellow small" title="Reset Team" onclick="resetTeam('${teamData.id}')">↺</button>
-        <button class="red small" title="Delete Team" onclick="this.parentElement.remove()">X</button>
-      `;
-      teamsConfigContainer.appendChild(row);
-    }
+    // --- UTILS & HELPERS ---
     
-    // LOGIC RESTORED: The upload trigger function
-    window.triggerUpload = (teamId, btnElement) => {
-        if(!teamId) return alert("Save the team with an ID first!");
-        
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
+    // Config Updates
+    document.getElementById('btnAddCat').onclick = () => {
+        const id = document.getElementById('newCatId').value.toUpperCase();
+        const base = document.getElementById('newCatBase').value;
+        const inc = document.getElementById('newCatInc').value;
+        if(id && base && inc) {
+            STATE.categories.push({ id, base: Number(base), increment: Number(inc) });
+            socket.emit('admin:updateConfig', { categories: STATE.categories });
+        }
+    };
+
+    document.getElementById('btnAddTeamRow').onclick = () => {
+        const row = document.createElement('div');
+        row.className = 'team-config-row';
+        row.innerHTML = `
+            <input class="t-id" placeholder="ID"><input class="t-name" placeholder="Name"><input class="t-pass" placeholder="Pass"><input class="t-purse" value="500">
+            <div>-</div><div></div><button class="red small" onclick="this.parentElement.remove()">X</button>
+        `;
+        document.getElementById('teamsConfigContainer').appendChild(row);
+    };
+
+    document.getElementById('btnSaveTeams').onclick = () => {
+        const rows = document.querySelectorAll('.team-config-row');
+        const newTeams = [];
+        rows.forEach(r => {
+            const inputs = r.querySelectorAll('input');
+            if(inputs[0].value) newTeams.push({ id: inputs[0].value, name: inputs[1].value, password: inputs[2].value, purse: Number(inputs[3].value) });
+        });
+        socket.emit('admin:updateConfig', { teams: newTeams });
+    };
+    
+    // Upload Helper for Teams
+    window.triggerUpload = (teamId, btn) => {
+        const input = document.createElement('input'); input.type = 'file';
         input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if(!file) return;
-
-            const formData = new FormData();
-            formData.append('teamLogo', file); 
-
-            btnElement.textContent = '...';
-            
-            try {
-                const res = await fetch('/upload', { method: 'POST', body: formData });
-                const data = await res.json();
-                if(data.url) {
-                   socket.emit('admin:setTeamLogo', { teamId, logoUrl: data.url });
-                   showToast('Logo Uploaded!');
-                } else {
-                   alert('Upload Failed');
-                }
-            } catch(err) {
-                console.error(err);
-                alert('Upload Error');
-            }
-            btnElement.textContent = 'Up';
+            const fd = new FormData(); fd.append('f', e.target.files[0]);
+            const res = await fetch('/upload', { method: 'POST', body: fd });
+            const data = await res.json();
+            socket.emit('admin:setTeamLogo', { teamId, logoUrl: data.url });
         };
         input.click();
     };
 
-    function renderCategoriesStructure() {
-      categoriesContainer.innerHTML = '';
-      if(STATE.categories.length === 0) {
-        categoriesContainer.innerHTML = '<div class="small" style="color:var(--muted); padding:10px;">No categories yet. Admin please add one above.</div>';
-        return;
-      }
-
-      STATE.categories.forEach(cat => {
-        const div = document.createElement('div');
-        
-        let headerControls = `<span class="small">Base: ${cat.base} | Inc: ${cat.increment}</span>`;
-        if (CURRENT_USER.role === 'admin') {
-           headerControls += `
-             <button class="red small" onclick="deleteCat('${cat.id}')" style="padding:2px 6px; margin-left:4px; font-size:10px;">X</button>
-           `;
-        }
-
-        div.innerHTML = `
-          <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-            <label style="color:white; font-weight:bold;">Category ${cat.id}</label>
-            <div>${headerControls}</div>
-          </div>
-          ${CURRENT_USER.role === 'admin' ? 
-            `<textarea id="ta-${cat.id}" class="cat-ta" data-cat="${cat.id}" placeholder="Enter players (one per line)..."></textarea>
-             <div class="controls" style="margin-bottom:10px">
-               <button onclick="saveCat('${cat.id}')" class="ghost small">Save List</button>
-               <button onclick="clearCat('${cat.id}')" class="ghost small">Clear</button>
-             </div>` 
-            : ''}
-          <div class="players" id="playersList-${cat.id}"></div>
-        `;
-        categoriesContainer.appendChild(div);
-
-        if(CURRENT_USER.role === 'admin') {
-          const ta = div.querySelector('textarea');
-          ta.addEventListener('input', () => {
-             // Local preview logic if desired, or just wait for save
-          });
-        }
-      });
-    }
-
-    function renderCategoryPlayers(catId, players) {
-      const container = document.getElementById(`playersList-${catId}`);
-      if(!container) return;
-      container.innerHTML = '';
-      
-      const catConfig = STATE.categories.find(c => c.id === catId);
-      if(!catConfig) return; 
-      
-      players.forEach(p => {
-        let isSold = false;
-        let soldTo = null;
-        STATE.teams.forEach(t => { 
-          if(t.purchases && t.purchases[catId] === p.name) {
-            isSold = true;
-            soldTo = t.name;
-          }
-        });
-
-        const el = document.createElement('div');
-        el.dataset.name = p.name;
-        el.dataset.cat = catId;
-        
-        const key = `${catId}:${p.name}`;
-        const soldPrice = STATE.soldPrices[key];
-        const activeBid = STATE.activeBids[key];
-        const displayPrice = soldPrice || activeBid || p.price || catConfig.base;
-
-        el.dataset.price = displayPrice;
-        el.className = `player ${isSold ? 'sold' : ''} ${activeBid && !isSold ? 'has-bid' : ''}`;
-        
-        let actionHTML = '';
-        if(isSold) {
-          actionHTML = `<div class="small" style="color:#7c3aed">Sold: ${soldTo}</div>`;
-        } else if(CURRENT_USER.role === 'admin') {
-          actionHTML = `
-            <button class="btn-bid small">+${catConfig.increment}</button>
-            <button class="btn-sold green small" style="margin-left:4px">Sold</button>
-          `;
-        } else if(CURRENT_USER.role === 'team') {
-           actionHTML = `<button class="btn-bid-req ghost small">Bid Request</button>`;
-        }
-
-        if(CURRENT_USER.role === 'admin') {
-           actionHTML += `<button class="yellow small" style="margin-left:4px" title="Reset Player" onclick="resetPlayer('${catId}', '${p.name}')">↺</button>`;
-        }
-
-        el.innerHTML = `
-          <div class="left">
-            <div class="badge">${catId}</div>
-            <div class="name">${p.name}</div>
-          </div>
-          <div class="right" style="display:flex;align-items:center;gap:8px">
-            <div class="price">${displayPrice}</div>
-            <div class="actions">${actionHTML}</div>
-          </div>
-        `;
-
-        // Bind Events
-        if(!isSold) {
-          const bidBtn = el.querySelector('.btn-bid');
-          if(bidBtn) {
-             bidBtn.onclick = () => {
-               const next = Number(el.dataset.price) + Number(catConfig.increment);
-               socket.emit('player:bid', { category: catId, name: p.name, price: next });
-             };
-          }
-          const soldBtn = el.querySelector('.btn-sold');
-          if(soldBtn) soldBtn.onclick = () => openSoldConfirmation(catId, p.name, el.dataset.price);
-          
-          if(CURRENT_USER.role === 'team') {
-            const reqBtn = el.querySelector('.btn-bid-req');
-            if(reqBtn) {
-              reqBtn.onclick = () => {
-                const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
-                // Validation (Same as your file)
-                if(myTeam) {
-                  if(myTeam.purchases && myTeam.purchases[catId]) {
-                    showToast('You already bought a player in this category!');
-                    return;
-                  }
-                  const proposedBid = Number(el.dataset.price) + Number(catConfig.increment);
-                  let reserveCost = 0;
-                  STATE.categories.forEach(c => {
-                    if (c.id !== catId) {
-                      if (!myTeam.purchases || !myTeam.purchases[c.id]) {
-                        reserveCost += Number(c.base);
-                      }
-                    }
-                  });
-
-                  if (proposedBid + reserveCost > myTeam.purse) {
-                     showToast(`Budget Warning! Bid+Reserves > Purse.`);
-                     return; 
-                  }
-                }
-                const myTeamName = myTeam?.name || 'Team';
-                socket.emit('bid:request', { category: catId, playerName: p.name, teamName: myTeamName });
-                reqBtn.textContent = 'Requested';
-              };
-            }
-          }
-        }
-        container.appendChild(el);
-      });
-    }
-
-    // LOGIC RESTORED: Render Scoreboard with logos
-    function renderScoreboard() {
-      scoreboardEl.innerHTML = '';
-      STATE.teams.forEach(t => {
-        const div = document.createElement('div');
-        div.className = 'team-row';
-        const count = t.purchases ? Object.keys(t.purchases).length : 0;
-        
-        let logoImg = '';
-        if(t.logo) logoImg = `<img src="${t.logo}" class="team-logo">`;
-
-        div.innerHTML = `
-           <div style="display:flex; align-items:center;">
-             ${logoImg}
-             <strong>${t.name}</strong>
-           </div>
-           <div style="text-align:right">
-             <div>৳ ${t.purse}</div>
-             <div class="small" style="color:var(--muted)">${count} Players</div>
-           </div>
-        `;
-        scoreboardEl.appendChild(div);
-      });
-    }
-
-    function renderMyTeam() {
-      if(CURRENT_USER.role !== 'team') return;
-      const t = STATE.teams.find(x => x.id === CURRENT_USER.teamId);
-      if(!t) return;
-      const div = document.getElementById('myTeamContent');
-      let html = `<div style="font-size:24px; font-weight:bold; margin-bottom:10px">Purse: ৳ ${t.purse}</div>`;
-      html += '<strong>My Purchases:</strong>';
-      if(t.purchases) {
-        Object.entries(t.purchases).forEach(([cat, name]) => {
-           if(name) html += `<div style="padding:5px; border-bottom:1px solid rgba(255,255,255,0.05)">[${cat}] ${name}</div>`;
-        });
-      }
-      div.innerHTML = html;
-    }
-
-    function showToast(msg) {
-      const t = document.createElement('div');
-      t.className = 'toast';
-      t.textContent = msg;
-      toastContainer.appendChild(t);
-      setTimeout(() => t.remove(), 4000);
-    }
-
-    // -- CSV EXPORT --
-    function downloadCSV() {
-        let rows = [["Category", "Player Name", "Base Price", "Sold Price", "Status", "Buyer Team"]];
-        STATE.categories.forEach(cat => {
-            const players = STATE.playersSnapshot[cat.id] || [];
-            players.forEach(p => {
-                const base = cat.base;
-                let soldPrice = 0, status = "Unsold", buyer = "-";
-                
-                const buyerTeam = STATE.teams.find(t => t.purchases && t.purchases[cat.id] === p.name);
-                if (buyerTeam) {
-                    status = "Sold";
-                    buyer = buyerTeam.name;
-                    const key = `${cat.id}:${p.name}`;
-                    soldPrice = STATE.soldPrices[key] || base;
-                } else {
-                    const key = `${cat.id}:${p.name}`;
-                    if (STATE.activeBids[key]) {
-                        status = "Bidding";
-                        soldPrice = STATE.activeBids[key];
-                    } else {
-                        soldPrice = base;
-                    }
-                }
-                rows.push([cat.id, p.name, base, soldPrice, status, buyer]);
-            });
-        });
-
-        let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `auction_${CURRENT_USER.hostId}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    }
-
-    btnExportAdmin.addEventListener('click', downloadCSV);
-    btnExportTeam.addEventListener('click', downloadCSV);
-
-    // -- Admin Actions (Sold/Config) --
-    function openSoldConfirmation(cat, name, price) {
-      pendingSold = { category: cat, name, price: Number(price) };
-      const modal = document.getElementById('soldActionOverlay');
-      const details = document.getElementById('soldActionDetails');
-      const select = document.getElementById('soldActionTeam');
-      details.textContent = `${name} (${cat}) @ ${price}`;
-      select.innerHTML = '';
-      STATE.teams.forEach(t => {
-        const canAfford = t.purse >= Number(price);
-        const hasSlot = !(t.purchases && t.purchases[cat]);
-        const disabled = (canAfford && hasSlot) ? '' : 'disabled';
-        select.innerHTML += `<option value="${t.id}" ${disabled}>${t.name} (${canAfford ? '৳'+t.purse : 'Low Funds'})</option>`;
-      });
-      modal.classList.remove('hidden');
-    }
-
-    document.getElementById('btnCancelSold').onclick = () => document.getElementById('soldActionOverlay').classList.add('hidden');
-    
-    document.getElementById('btnConfirmSold').onclick = () => {
-      const teamId = document.getElementById('soldActionTeam').value;
-      if(!teamId) return alert('Select a valid team');
-      socket.emit('player:sold', { ...pendingSold, teamId });
-      document.getElementById('soldActionOverlay').classList.add('hidden');
-    };
-
-    document.getElementById('btnAddCat').addEventListener('click', () => {
-       const id = document.getElementById('newCatId').value.toUpperCase();
-       const base = document.getElementById('newCatBase').value;
-       const inc = document.getElementById('newCatInc').value;
-       if(!id || !base || !inc) return alert('Fill all fields');
-       if(STATE.categories.find(c => c.id === id)) return alert('Category already exists');
-       STATE.categories.push({ id, base: Number(base), increment: Number(inc) });
-       socket.emit('admin:updateConfig', { categories: STATE.categories });
-    });
-
-    document.getElementById('btnAddTeamRow').onclick = () => addTeamInputRow();
-    
-    document.getElementById('btnSaveTeams').onclick = () => {
-      const rows = document.querySelectorAll('.team-config-row:not(.team-config-header)');
-      const newTeams = [];
-      let valid = true;
-      rows.forEach(row => {
-         const id = row.querySelector('.t-id').value.trim();
-         const name = row.querySelector('.t-name').value.trim();
-         const pass = row.querySelector('.t-pass').value.trim();
-         const purse = row.querySelector('.t-purse').value;
-         if(!id || !name) valid = false;
-         // Logo is not saved here, it uses the separate upload button
-         newTeams.push({ id, name, password: pass, purse: Number(purse) });
-      });
-      if(!valid) return alert('ID and Name are required for all teams');
-      socket.emit('admin:updateConfig', { teams: newTeams });
-      showToast('Teams Saved!');
-    };
-
-    btnResetSystem.addEventListener('click', () => {
-      if(confirm('DANGER: This will wipe ALL players and balances. Are you sure?')) {
-        socket.emit('admin:resetAll');
-      }
-    });
-
-    // Helper Wrappers for global access
-    window.resetTeam = (id) => alert("To reset a team, please edit their purse manually and click Save.");
-    
-    window.resetPlayer = (category, name) => {
-      if(confirm(`Reset player '${name}'? Refunds owner.`)) {
-        socket.emit('admin:resetPlayer', { category, name });
-      }
-    };
-    
+    // Category Helpers
     window.saveCat = (id) => {
-        const ta = document.getElementById(`ta-${id}`);
-        const names = ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
-        const config = STATE.categories.find(c=>c.id===id);
-        socket.emit('players:save', { category: id, players: names.map(n => ({ name: n, price: config.base })) });
-        showToast('Players Saved');
+        const val = document.getElementById(`ta-${id}`).value;
+        const players = val.split('\n').filter(x=>x.trim()).map(x => ({ name: x.trim(), price: 0 }));
+        socket.emit('players:save', { category: id, players });
     };
+    window.deleteCat = (id) => { if(confirm('Delete Category?')) socket.emit('admin:deleteCategory', { id }); };
     
-    window.clearCat = (id) => {
-        if(confirm('Clear players in this category?')) socket.emit('players:clear', { category: id });
+    // Player Sold Logic (triggered from popup usually)
+    function openSoldConfirmation(cat, name, price) {
+        pendingSold = { category: cat, name, price: Number(price) };
+        const sel = document.getElementById('soldActionTeam');
+        sel.innerHTML = '';
+        STATE.teams.forEach(t => {
+            const canAfford = t.purse >= Number(price);
+            const hasSlot = !(t.purchases && t.purchases[cat]);
+            sel.innerHTML += `<option value="${t.id}" ${(!canAfford || !hasSlot) ? 'disabled' : ''}>${t.name} (${t.purse})</option>`;
+        });
+        document.getElementById('soldActionDetails').innerText = `${name} - ${price}`;
+        document.getElementById('soldActionOverlay').classList.remove('hidden');
+    }
+
+    document.getElementById('btnConfirmSold').onclick = () => {
+        const tid = document.getElementById('soldActionTeam').value;
+        if(tid) {
+            socket.emit('player:sold', { ...pendingSold, teamId: tid });
+            document.getElementById('soldActionOverlay').classList.add('hidden');
+        }
     };
-    
-    window.deleteCat = (id) => {
-      if(confirm(`Delete Category ${id}?`)) socket.emit('admin:deleteCategory', { id });
-    };
+    document.getElementById('btnCancelSold').onclick = () => document.getElementById('soldActionOverlay').classList.add('hidden');
+
+    // System Reset
+    document.getElementById('btnResetSystem').onclick = () => { if(confirm('RESET ALL?')) socket.emit('admin:resetAll'); };
+    window.resetPlayer = (c, n) => { if(confirm('Reset Player?')) socket.emit('admin:resetPlayer', { category: c, name: n }); };
 
     // Logging
-    function getPlayerEl(cat, name) {
-        const list = document.getElementById(`playersList-${cat}`);
-        if(!list) return null;
-        return Array.from(list.children).find(el => el.dataset.name === name);
-    }
+    socket.on('admin:toast', (d) => { if(CURRENT_USER.role==='admin') {
+        const t = document.createElement('div'); t.className = 'toast'; t.innerText = d.msg;
+        toastContainer.appendChild(t); setTimeout(()=>t.remove(), 4000);
+    }});
+    
     function log(msg) {
-        const d = document.createElement('div');
-        d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-        logEl.prepend(d);
+        const l = document.getElementById('log');
+        const d = document.createElement('div'); d.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        l.prepend(d);
     }
+    
+    // CSV Export
+    document.getElementById('btnExportAdmin').onclick = () => {
+        let csv = "Category,Name,SoldTo,Price\n";
+        STATE.categories.forEach(c => {
+            const pl = STATE.playersSnapshot[c.id] || [];
+            pl.forEach(p => {
+                const sold = STATE.teams.find(t => t.purchases && t.purchases[c.id] === p.name);
+                const price = STATE.soldPrices[`${c.id}:${p.name}`] || 0;
+                csv += `${c.id},${p.name},${sold ? sold.name : '-'},${price}\n`;
+            });
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = "auction_data.csv"; a.click();
+    };
   </script>
 </body>
 </html>
