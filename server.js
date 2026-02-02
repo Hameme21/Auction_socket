@@ -27,13 +27,16 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     // Save as timestamp-filename to avoid duplicates
-    cb(null, Date.now() + '-' + file.originalname)
+    // Sanitize filename to remove spaces
+    const safeName = file.originalname.replace(/\s+/g, '_');
+    cb(null, Date.now() + '-' + safeName);
   }
 });
 
 const upload = multer({ storage: storage });
 
-// Serve uploaded files statically so the frontend can access them
+// Serve public folder and uploads
+app.use(express.static('public'));
 app.use('/uploads', express.static(uploadDir));
 // ---------------------------------------
 
@@ -93,7 +96,8 @@ async function loadFromFirebase() {
 }
 
 // --- UPLOAD ENDPOINT ---
-app.post('/upload', upload.single('playerImage'), (req, res) => {
+// Ensure the field name 'teamLogo' matches what the frontend FormData sends
+app.post('/upload', upload.single('teamLogo'), (req, res) => {
     if (!req.file) {
         return res.status(400).send('No file uploaded.');
     }
@@ -168,17 +172,10 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- POP-UP SYNC EVENT ---
-    socket.on('admin:reveal_player', (playerData) => {
-        // Broadcast to everyone (teams, guests, and other admins)
-        io.emit('popup:reveal', playerData);
-    });
-
     // 4. Admin Management
     socket.on('admin:updateConfig', (newConfig) => {
         if(newConfig.teams) {
             // MERGE LOGIC: We map over new data but check old data to preserve the Logo
-            // This ensures that when we save names/purses from the admin panel, we don't wipe the logo.
             STATE.teams = newConfig.teams.map(newTeam => {
                 const oldTeam = STATE.teams.find(t => t.id === newTeam.id);
                 return {
@@ -222,20 +219,6 @@ io.on('connection', (socket) => {
         saveToFirebase();
     });
 
-    // Update Player Image and Broadcast to Popup
-    socket.on('admin:updatePlayerImage', ({ category, name, imageUrl }) => {
-        if (STATE.playersSnapshot && STATE.playersSnapshot[category]) {
-            const player = STATE.playersSnapshot[category].find(p => p.name === name);
-            if (player) {
-                player.image = imageUrl;
-                io.emit('state:updated', STATE); // Update list views
-                // Also force update the popup if it is currently open on anyone's screen
-                io.emit('popup:update_image', { category, name, imageUrl });
-                saveToFirebase();
-            }
-        }
-    });
-
     socket.on('players:clear', ({ category }) => {
         if (STATE.playersSnapshot && STATE.playersSnapshot[category]) {
             delete STATE.playersSnapshot[category];
@@ -277,8 +260,6 @@ io.on('connection', (socket) => {
         saveToFirebase();
     });
 });
-
-app.use(express.static('public'));
 
 loadFromFirebase().then(() => {
     server.listen(PORT, () => console.log(`🚀 Auction System Live at http://localhost:${PORT}`));
