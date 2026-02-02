@@ -39,8 +39,7 @@
 
     /* --- Player Card --- */
     .players{margin-top:10px}
-    .player{display:flex;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);margin-bottom:8px; border:1px solid transparent; transition:0.2s; cursor: pointer;}
-    .player:hover { background: rgba(255,255,255,0.05); }
+    .player{display:flex;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);margin-bottom:8px; border:1px solid transparent; transition:0.2s}
     .player.sold{opacity: 0.5; border-color: #7c3aed;}
     .player.bidding{border-color: #fbbf24; background: rgba(251, 191, 36, 0.1);}
     .player.has-bid .price { color: #fbbf24; text-shadow: 0 0 5px rgba(251, 191, 36, 0.5); }
@@ -50,10 +49,6 @@
     .name{font-weight:600}
     .price{font-size:18px;font-weight:700;}
     
-    /* --- Team Settings Grid --- */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
-    .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
-
     /* --- Scoreboard --- */
     .team-row{display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02); margin-bottom: 8px;}
 
@@ -61,35 +56,6 @@
     .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);z-index:4000;backdrop-filter:blur(5px);}
     .modal{background:#0f172a;padding:25px;border-radius:12px;width:400px;max-width:90%;border:1px solid #1e293b; box-shadow: 0 20px 50px rgba(0,0,0,0.5);}
     .hidden{display:none !important;}
-
-    /* NEW: Drag and Drop & Image Styles */
-    .player-detail-img { 
-        width: 150px; height: 150px; margin: 0 auto 15px auto;
-        border-radius: 12px; border: 2px dashed rgba(255,255,255,0.1);
-        overflow: hidden; background: rgba(0,0,0,0.2);
-        position: relative; 
-        transition: border-color 0.2s, background-color 0.2s;
-    }
-    .player-detail-img.drag-active {
-        border-color: #10b981 !important;
-        background-color: rgba(16, 185, 129, 0.1) !important;
-    }
-    .upload-overlay {
-        position: absolute; inset:0; background: rgba(0,0,0,0.6);
-        display: flex; align-items: center; justify-content: center;
-        opacity: 0; transition: opacity 0.2s; pointer-events: none;
-        color: white; font-weight: bold;
-    }
-    .player-detail-img.drag-active .upload-overlay { opacity: 1; }
-    
-    .upload-btn {
-        background: var(--accent); color: white; border-radius: 50%;
-        width: 30px; height: 30px; border: none; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 20px; line-height: 1; margin-left: 10px;
-    }
-    .stat-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 8px; }
-
 
     /* --- Toast --- */
     #toastContainer {position: fixed; top: 20px; right: 20px; z-index: 6000; display: flex; flex-direction: column; gap: 10px;}
@@ -115,6 +81,28 @@
 
     /* --- Sold Animation Overlay --- */
     #soldAnimationOverlay { position: fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; display:flex; justify-content:center; align-items:center; }
+    
+    /* --- Team Logo Styles --- */
+    .team-logo { 
+      width: 30px; height: 30px; 
+      object-fit: cover; border-radius: 50%; 
+      margin-right: 10px; 
+      border: 1px solid rgba(255,255,255,0.3); background: #000; vertical-align: middle;
+    }
+    
+    /* Login Panel Large Logo */
+    .team-logo-large { 
+      width: 80px; height: 80px; 
+      object-fit: cover; border-radius: 50%; 
+      margin: 0 auto 15px auto; 
+      display: block; 
+      border: 3px solid var(--accent); 
+      box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+    }
+    
+    /* --- Updated Grid for Team Config with Upload Button --- */
+    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 0.6fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
     @media (max-width:900px){.grid{grid-template-columns:1fr;}}
   </style>
@@ -155,10 +143,14 @@
           <option value="team">Team Representative</option>
         </select>
       </div>
-      <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
-        <label>Select Your Team</label>
-        <select id="loginTeamId"></select>
-      </div>
+
+     <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
+       <div id="loginTeamLogoPreview"></div>
+
+      <label>Select Your Team</label>
+      <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
+    </div>
+
       <div id="passGroup" class="hidden" style="margin-bottom:15px;">
         <label>Team Password</label>
         <input type="password" id="loginPass">
@@ -171,43 +163,6 @@
   <div id="appContainer" class="hidden">
     
     <div id="toastContainer"></div>
-
-    <div class="overlay hidden" id="playerDetailModal">
-      <div class="modal" style="text-align:center;">
-        <div class="flex" style="justify-content: flex-end; margin-bottom: -20px;">
-          <button class="ghost small" onclick="closePlayerModal()">✕</button>
-        </div>
-        
-        <div class="player-detail-img" id="detailImgContainer">
-             <div class="upload-overlay">Drop Image Here</div>
-             <div id="imgPreviewContent" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">
-                <svg viewBox="0 0 24 24" style="width:60px; height:60px; fill:var(--muted);"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-             </div>
-        </div>
-        
-        <div id="adminImgControls" class="hidden" style="margin-bottom:15px;">
-             <div class="flex" style="justify-content:center; align-items:center;">
-                 <input id="detailImgUrl" placeholder="Paste URL or Upload ->" style="margin:0; font-size:11px; width:180px;">
-                 <input type="file" id="fileInput" hidden accept="image/*">
-                 <button class="upload-btn" onclick="document.getElementById('fileInput').click()" title="Upload from Device">+</button>
-                 <button class="ghost small" onclick="savePlayerImageFromUrl()" style="margin-left:5px;">Save URL</button>
-             </div>
-        </div>
-
-        <h2 id="detailName" style="margin:0 0 5px 0">Player Name</h2>
-        <div class="badge" id="detailCat" style="display:inline-block; margin-bottom:15px;">Category</div>
-        
-        <div class="stat-row">
-           <span>Current Price:</span>
-           <span id="detailPrice" style="font-weight:bold; color:var(--accent)">0</span>
-        </div>
-
-        <div id="detailAdminActions" class="grid hidden" style="grid-template-columns: 1fr 1fr; gap:10px; margin-top:20px;">
-            <button id="btnDetailBid" class="blue" style="height:50px; font-size:15px;">+ INCREMENT</button>
-            <button id="btnDetailSold" class="green" style="height:50px; font-size:15px;">SOLD</button>
-        </div>
-      </div>
-    </div>
 
     <div class="overlay hidden" id="soldActionOverlay">
       <div class="modal">
@@ -251,7 +206,7 @@
             <div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
               <label>Team Settings & Passwords</label>
               <div class="team-config-row team-config-header">
-                <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Reset</span> <span>Del</span>
+                <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Logo</span> <span>Reset</span> <span>Del</span>
               </div>
               <div id="teamsConfigContainer"></div>
               <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px; width:100%">+ Add Team Slot</button>
@@ -293,6 +248,9 @@
       <div class="card" style="text-align:center; padding:40px; border:2px solid #ffd166;">
         <h1 style="color:#ffd166; font-size:40px; margin:0;">SOLD!</h1>
         <h2 id="animPlayer">Player</h2>
+        <div style="display:flex; justify-content:center; margin:10px 0;">
+             <img id="animTeamLogo" style="width:60px; height:60px; border-radius:50%; object-fit:cover; display:none;">
+        </div>
         <p>Sold to <strong id="animTeam">Team</strong> for <span id="animPrice">0</span></p>
       </div>
     </div>
@@ -310,7 +268,6 @@
     let CURRENT_USER = { role: null, teamId: null, hostId: null };
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {} };
     let pendingSold = null;
-    let currentlyViewedPlayer = null;
 
     // -- Elements --
     const portal = document.getElementById('portal');
@@ -325,16 +282,9 @@
     const teamsConfigContainer = document.getElementById('teamsConfigContainer');
     const toastContainer = document.getElementById('toastContainer');
     const hammer = document.getElementById('hammer');
-    
-    // Modal Elements
-    const playerDetailModal = document.getElementById('playerDetailModal');
-    const detailName = document.getElementById('detailName');
-    const detailCat = document.getElementById('detailCat');
-    const detailPrice = document.getElementById('detailPrice');
-    const adminImgControls = document.getElementById('adminImgControls');
-    const detailAdminActions = document.getElementById('detailAdminActions');
-    const btnDetailBid = document.getElementById('btnDetailBid');
-    const btnDetailSold = document.getElementById('btnDetailSold');
+    const btnResetSystem = document.getElementById('btnResetSystem');
+    const btnExportAdmin = document.getElementById('btnExportAdmin');
+    const btnExportTeam = document.getElementById('btnExportTeam');
 
     // Hammer Reset Listener
     if(hammer) {
@@ -398,6 +348,7 @@
 
     // Participant Connect Success (Go to Step 2)
     socket.on('init:teams_available', (data) => {
+        STATE.teams = data.teams; // Update local state for preview
         CURRENT_USER.hostId = data.hostId;
         const sel = document.getElementById('loginTeamId');
         sel.innerHTML = '<option value="">Select Team</option>';
@@ -406,6 +357,18 @@
         portal.classList.add('hidden');
         teamAuthOverlay.classList.remove('hidden');
     });
+
+    function previewTeamLogo() {
+      const id = document.getElementById('loginTeamId').value;
+      const previewDiv = document.getElementById('loginTeamLogoPreview');
+      previewDiv.innerHTML = '';
+      if(id) {
+        const team = STATE.teams.find(t => t.id === id);
+        if(team && team.logo) {
+          previewDiv.innerHTML = `<img src="${team.logo}" class="team-logo-large">`;
+        }
+      }
+    }
 
     // --- TEAM AUTH LOGIC ---
     function toggleTeamPass() {
@@ -442,27 +405,6 @@
       STATE = newState;
       renderAll();
       if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
-      
-      // Update modal if currently open
-      if(currentlyViewedPlayer && !playerDetailModal.classList.contains('hidden')) {
-         const key = `${currentlyViewedPlayer.category}:${currentlyViewedPlayer.name}`;
-         if(STATE.activeBids[key]) {
-             detailPrice.textContent = STATE.activeBids[key];
-         }
-      }
-    });
-    
-    // NEW: Auto Popup Listener
-    socket.on('popup:reveal', (data) => {
-        // Automatically open the modal for everyone
-        // Use 'true' as the last argument to indicate "passive mode" (don't re-broadcast)
-        openPlayerDetailModal(data.player, data.category, data.increment, data.currentPrice, data.isSold, true);
-    });
-
-    socket.on('popup:update_image', (data) => {
-        if(currentlyViewedPlayer && currentlyViewedPlayer.name === data.name) {
-            updateModalImage(data.imageUrl);
-        }
     });
 
     socket.on('player:bid', (pl) => {
@@ -474,12 +416,6 @@
         el.classList.add('has-bid'); 
         setTimeout(()=>el.classList.remove('bidding'), 300);
       }
-      
-      // Update Modal Live
-      if(currentlyViewedPlayer && currentlyViewedPlayer.name === pl.name && currentlyViewedPlayer.category === pl.category) {
-          detailPrice.textContent = pl.price;
-      }
-      
       log(`BID: ${pl.name} (${pl.category}) is now ${pl.price}`);
     });
 
@@ -495,15 +431,21 @@
         if(actionDiv) actionDiv.innerHTML = `<div class="small" style="color:#7c3aed">Sold to ${teamId}</div>`;
       }
       
-      // If modal open, close it or show sold state
-      if(currentlyViewedPlayer && currentlyViewedPlayer.name === name) {
-          closePlayerModal();
-      }
+      const team = STATE.teams.find(t=>t.id===teamId);
+      const teamName = team?.name || teamId;
+      const teamLogo = team?.logo;
 
-      const teamName = STATE.teams.find(t=>t.id===teamId)?.name || teamId;
       document.getElementById('animPlayer').textContent = name;
       document.getElementById('animTeam').textContent = teamName;
       document.getElementById('animPrice').textContent = price;
+      
+      const animLogo = document.getElementById('animTeamLogo');
+      if(teamLogo){
+         animLogo.src = teamLogo;
+         animLogo.style.display = 'block';
+      } else {
+         animLogo.style.display = 'none';
+      }
       
       const animOverlay = document.getElementById('soldAnimationOverlay');
       animOverlay.classList.remove('hidden');
@@ -530,18 +472,20 @@
       if(CURRENT_USER.role === 'admin') showToast(data.msg);
     });
 
+    socket.on('players:load', (d) => renderCategoryPlayers(d.category, d.players));
+
     // -- Rendering --
 
     function setupUI() {
       document.getElementById('roleDisplay').textContent = `Host: ${CURRENT_USER.hostId} | Role: ${CURRENT_USER.role.toUpperCase()}`;
       if(CURRENT_USER.role === 'admin') {
         adminConfigCard.classList.remove('hidden');
-        document.getElementById('btnResetSystem').classList.remove('hidden');
-        document.getElementById('btnExportAdmin').classList.remove('hidden'); 
+        btnResetSystem.classList.remove('hidden');
+        btnExportAdmin.classList.remove('hidden'); 
         renderTeamConfigForm();
       } else {
-        document.getElementById('btnResetSystem').classList.add('hidden');
-        document.getElementById('btnExportAdmin').classList.add('hidden');
+        btnResetSystem.classList.add('hidden');
+        btnExportAdmin.classList.add('hidden');
       }
       if (CURRENT_USER.role === 'team') myTeamCard.classList.remove('hidden');
     }
@@ -565,19 +509,61 @@
       STATE.teams.forEach((t) => addTeamInputRow(t));
     }
 
-    function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500}) {
+    // UPDATED: Team Input Row with Logo Upload
+    function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500, logo:null}) {
       const row = document.createElement('div');
       row.className = 'team-config-row';
+      
+      const logoHTML = teamData.logo ? `<img src="${teamData.logo}" style="width:25px; height:25px; border-radius:50%">` : '<span class="small">-</span>';
+
       row.innerHTML = `
         <input class="t-id" value="${teamData.id || ''}" placeholder="ID">
         <input class="t-name" value="${teamData.name || ''}" placeholder="Name">
         <input class="t-pass" value="${teamData.password || ''}" placeholder="Pass">
         <input class="t-purse" type="number" value="${teamData.purse}" placeholder="Purse">
+        <div style="display:flex; align-items:center; gap:5px;">
+           ${logoHTML}
+           <button class="blue small" title="Upload Logo" onclick="triggerUpload('${teamData.id}', this)">Up</button>
+        </div>
         <button class="yellow small" title="Reset Team" onclick="resetTeam('${teamData.id}')">↺</button>
         <button class="red small" title="Delete Team" onclick="this.parentElement.remove()">X</button>
       `;
       teamsConfigContainer.appendChild(row);
     }
+    
+    // NEW: Function to trigger file upload
+    window.triggerUpload = (teamId, btnElement) => {
+        if(!teamId) return alert("Save the team with an ID first!");
+        
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+
+            const formData = new FormData();
+            formData.append('teamLogo', file); // Matches server.js multer
+
+            btnElement.textContent = '...';
+            
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if(data.url) {
+                   socket.emit('admin:setTeamLogo', { teamId, logoUrl: data.url });
+                   showToast('Logo Uploaded!');
+                } else {
+                   alert('Upload Failed');
+                }
+            } catch(err) {
+                console.error(err);
+                alert('Upload Error');
+            }
+            btnElement.textContent = 'Up';
+        };
+        input.click();
+    };
 
     function renderCategoriesStructure() {
       categoriesContainer.innerHTML = '';
@@ -611,6 +597,13 @@
           <div class="players" id="playersList-${cat.id}"></div>
         `;
         categoriesContainer.appendChild(div);
+
+        if(CURRENT_USER.role === 'admin') {
+          const ta = div.querySelector('textarea');
+          ta.addEventListener('input', () => {
+             // Local preview logic if desired, or just wait for save
+          });
+        }
       });
     }
 
@@ -644,22 +637,19 @@
         el.dataset.price = displayPrice;
         el.className = `player ${isSold ? 'sold' : ''} ${activeBid && !isSold ? 'has-bid' : ''}`;
         
-        // CLICK TO OPEN MODAL (Admin only to control flow, or anyone if just viewing)
-        // Only admin click triggers broadcast. 
-        el.onclick = (e) => {
-            // Prevent if clicking a button inside
-            if(e.target.tagName === 'BUTTON') return;
-            openPlayerDetailModal(p, catId, catConfig.increment, displayPrice, isSold);
-        };
-
         let actionHTML = '';
         if(isSold) {
           actionHTML = `<div class="small" style="color:#7c3aed">Sold: ${soldTo}</div>`;
+        } else if(CURRENT_USER.role === 'admin') {
+          actionHTML = `
+            <button class="btn-bid small">+${catConfig.increment}</button>
+            <button class="btn-sold green small" style="margin-left:4px">Sold</button>
+          `;
         } else if(CURRENT_USER.role === 'team') {
            actionHTML = `<button class="btn-bid-req ghost small">Bid Request</button>`;
         }
 
-        if(CURRENT_USER.role === 'admin' && !isSold) {
+        if(CURRENT_USER.role === 'admin') {
            actionHTML += `<button class="yellow small" style="margin-left:4px" title="Reset Player" onclick="resetPlayer('${catId}', '${p.name}')">↺</button>`;
         }
 
@@ -673,178 +663,71 @@
             <div class="actions">${actionHTML}</div>
           </div>
         `;
-        
-        // --- BIND BUTTONS ---
-        if(!isSold && CURRENT_USER.role === 'team') {
+
+        // Bind Events
+        if(!isSold) {
+          const bidBtn = el.querySelector('.btn-bid');
+          if(bidBtn) {
+             bidBtn.onclick = () => {
+               const next = Number(el.dataset.price) + Number(catConfig.increment);
+               socket.emit('player:bid', { category: catId, name: p.name, price: next });
+             };
+          }
+          const soldBtn = el.querySelector('.btn-sold');
+          if(soldBtn) soldBtn.onclick = () => openSoldConfirmation(catId, p.name, el.dataset.price);
+          
+          if(CURRENT_USER.role === 'team') {
             const reqBtn = el.querySelector('.btn-bid-req');
             if(reqBtn) {
-              reqBtn.onclick = (e) => {
-                e.stopPropagation();
+              reqBtn.onclick = () => {
                 const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
-                // Simple validation
-                if(myTeam && myTeam.purchases && myTeam.purchases[catId]) {
+                // Validation (Same as your file)
+                if(myTeam) {
+                  if(myTeam.purchases && myTeam.purchases[catId]) {
                     showToast('You already bought a player in this category!');
                     return;
+                  }
+                  const proposedBid = Number(el.dataset.price) + Number(catConfig.increment);
+                  let reserveCost = 0;
+                  STATE.categories.forEach(c => {
+                    if (c.id !== catId) {
+                      if (!myTeam.purchases || !myTeam.purchases[c.id]) {
+                        reserveCost += Number(c.base);
+                      }
+                    }
+                  });
+
+                  if (proposedBid + reserveCost > myTeam.purse) {
+                     showToast(`Budget Warning! Bid+Reserves > Purse.`);
+                     return; 
+                  }
                 }
                 const myTeamName = myTeam?.name || 'Team';
                 socket.emit('bid:request', { category: catId, playerName: p.name, teamName: myTeamName });
                 reqBtn.textContent = 'Requested';
               };
             }
+          }
         }
         container.appendChild(el);
       });
     }
 
-    // --- NEW: MODAL LOGIC & DRAG DROP ---
-    function openPlayerDetailModal(player, catId, increment, currentPrice, isSold, isPassive = false) {
-        currentlyViewedPlayer = { ...player, category: catId, currentPrice, increment };
-        
-        detailName.textContent = player.name;
-        detailCat.textContent = catId;
-        detailPrice.textContent = currentPrice;
-
-        updateModalImage(player.image);
-        document.getElementById('detailImgUrl').value = player.image || '';
-
-        // UI Setup based on Role
-        if(CURRENT_USER.role === 'admin') {
-            adminImgControls.classList.remove('hidden');
-            detailAdminActions.classList.toggle('hidden', isSold); 
-            setupImageUpload(); // Enable drag & drop logic
-            
-            // If Admin opened this manually (clicked card), broadcast to others
-            if(!isPassive) {
-                socket.emit('admin:reveal_player', { player, category: catId, increment, currentPrice, isSold });
-            }
-        } else {
-            // Team/Guest View
-            adminImgControls.classList.add('hidden');
-            detailAdminActions.classList.add('hidden');
-            removeDragEvents(); // Disable drag logic
-        }
-
-        // Bind Admin Actions
-        if(CURRENT_USER.role === 'admin') {
-            btnDetailBid.onclick = () => {
-                const next = Number(detailPrice.textContent) + Number(increment);
-                socket.emit('player:bid', { category: catId, name: player.name, price: next });
-            };
-            btnDetailSold.onclick = () => {
-                 closePlayerModal();
-                 openSoldConfirmation(catId, player.name, detailPrice.textContent);
-            };
-        }
-
-        playerDetailModal.classList.remove('hidden');
-    }
-
-    function closePlayerModal() {
-        playerDetailModal.classList.add('hidden');
-        currentlyViewedPlayer = null;
-    }
-
-    function updateModalImage(url) {
-        const container = document.getElementById('imgPreviewContent');
-        if(url) {
-            container.innerHTML = `<img src="${url}" alt="player" style="width:100%; height:100%; object-fit:cover;">`;
-        } else {
-            container.innerHTML = `<svg viewBox="0 0 24 24" style="width:60px; height:60px; fill:var(--muted);"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
-        }
-    }
-
-    // --- DRAG & DROP UTILS ---
-    function setupImageUpload() {
-        const dropZone = document.getElementById('detailImgContainer');
-        const fileInput = document.getElementById('fileInput');
-
-        // Prevent defaults
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
-
-        // Visual cues
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-active'), false);
-        });
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-active'), false);
-        });
-
-        // Handle Drop
-        dropZone.ondrop = (e) => {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            if(files.length > 0) uploadFile(files[0]);
-        };
-
-        // Handle File Input
-        fileInput.onchange = (e) => {
-            if(e.target.files.length > 0) uploadFile(e.target.files[0]);
-        };
-    }
-
-    function removeDragEvents() {
-        // Clone and replace to strip event listeners
-        const dropZone = document.getElementById('detailImgContainer');
-        const clone = dropZone.cloneNode(true);
-        dropZone.parentNode.replaceChild(clone, dropZone);
-    }
-
-    function uploadFile(file) {
-        const formData = new FormData();
-        formData.append('playerImage', file);
-
-        fetch('/upload', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            const imageUrl = data.url; 
-            updateModalImage(imageUrl);
-            
-            // Save to DB via Socket
-            if(currentlyViewedPlayer) {
-                socket.emit('admin:updatePlayerImage', { 
-                    category: currentlyViewedPlayer.category, 
-                    name: currentlyViewedPlayer.name, 
-                    imageUrl: imageUrl 
-                });
-            }
-            showToast('Image Uploaded!');
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Upload failed');
-        });
-    }
-
-    function savePlayerImageFromUrl() {
-        const url = document.getElementById('detailImgUrl').value;
-        if(currentlyViewedPlayer && url) {
-             socket.emit('admin:updatePlayerImage', { 
-                category: currentlyViewedPlayer.category, 
-                name: currentlyViewedPlayer.name, 
-                imageUrl: url 
-            });
-            updateModalImage(url);
-            showToast('URL Saved');
-        }
-    }
-
-    // --- UTILS & HELPERS ---
-    
     function renderScoreboard() {
       scoreboardEl.innerHTML = '';
       STATE.teams.forEach(t => {
         const div = document.createElement('div');
         div.className = 'team-row';
         const count = t.purchases ? Object.keys(t.purchases).length : 0;
+        
+        let logoImg = '';
+        if(t.logo) logoImg = `<img src="${t.logo}" class="team-logo">`;
+        
         div.innerHTML = `
-           <div><strong>${t.name}</strong></div>
+           <div style="display:flex; align-items:center;">
+             ${logoImg}
+             <strong>${t.name}</strong>
+           </div>
            <div style="text-align:right">
              <div>৳ ${t.purse}</div>
              <div class="small" style="color:var(--muted)">${count} Players</div>
@@ -915,8 +798,8 @@
         document.body.removeChild(link);
     }
 
-    document.getElementById('btnExportAdmin').addEventListener('click', downloadCSV);
-    document.getElementById('btnExportTeam').addEventListener('click', downloadCSV);
+    btnExportAdmin.addEventListener('click', downloadCSV);
+    btnExportTeam.addEventListener('click', downloadCSV);
 
     // -- Admin Actions (Sold/Config) --
     function openSoldConfirmation(cat, name, price) {
@@ -966,6 +849,9 @@
          const pass = row.querySelector('.t-pass').value.trim();
          const purse = row.querySelector('.t-purse').value;
          if(!id || !name) valid = false;
+         
+         // Note: We don't save the Logo from Inputs here, the backend preserves existing logo 
+         // unless 'admin:setTeamLogo' was called separately.
          newTeams.push({ id, name, password: pass, purse: Number(purse) });
       });
       if(!valid) return alert('ID and Name are required for all teams');
@@ -973,7 +859,7 @@
       showToast('Teams Saved!');
     };
 
-    document.getElementById('btnResetSystem').addEventListener('click', () => {
+    btnResetSystem.addEventListener('click', () => {
       if(confirm('DANGER: This will wipe ALL players and balances. Are you sure?')) {
         socket.emit('admin:resetAll');
       }
