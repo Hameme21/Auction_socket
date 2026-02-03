@@ -54,6 +54,13 @@ input,select{background:var(--glass);border:1px solid rgba(255,255,255,0.1);colo
 .team-logo{width:30px;height:30px;object-fit:cover;border-radius:50%;margin-right:10px;border:1px solid rgba(255,255,255,0.3);background:#000;vertical-align:middle}
 .team-logo-large{width:100px;height:100px;object-fit:cover;border-radius:50%;margin:0 auto 15px auto;display:block;border:3px solid var(--accent);box-shadow:0 0 20px rgba(124,58,237,0.4);animation:popIn 0.3s cubic-bezier(0.175,0.885,0.32,1.275)}
 @keyframes popIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+#activePlayerPopup{position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:4500;display:flex;justify-content:center;align-items:center;backdrop-filter:blur(8px)}
+.popup-content{background:#0b1220;border:1px solid #1e293b;border-radius:20px;padding:40px;width:600px;max-width:95%;text-align:center;box-shadow:0 0 50px rgba(124,58,237,0.2);position:relative}
+.popup-close{position:absolute;top:15px;right:20px;background:none;border:none;color:#94a3b8;font-size:24px;cursor:pointer}
+.player-img-large{width:180px;height:180px;border-radius:50%;object-fit:cover;border:4px solid var(--accent);margin-bottom:20px;background:#1e293b}
+.drop-zone{border:2px dashed #4f46e5;padding:10px;margin-top:10px;border-radius:8px;font-size:12px;color:#94a3b8;cursor:pointer}
+.drop-zone.dragover{background:rgba(79,70,229,0.1)}
+.price-display{font-size:48px;font-weight:800;color:#10b981;margin:15px 0;text-shadow:0 0 20px rgba(16,185,129,0.3)}
 @media (max-width:900px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -97,6 +104,26 @@ input,select{background:var(--glass);border:1px solid rgba(255,255,255,0.1);colo
 </div>
 <div id="appContainer" class="hidden">
     <div id="toastContainer"></div>
+    <div id="activePlayerPopup" class="hidden">
+        <div class="popup-content">
+            <button class="popup-close" onclick="closePopup()">×</button>
+            <div id="popupPlayerName" style="font-size:24px;font-weight:bold;margin-bottom:5px"></div>
+            <div id="popupCategory" class="badge" style="display:inline-block;margin-bottom:15px"></div>
+            <div>
+                <img id="popupPlayerImg" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTRhM2I4IiBzdHJva2Utd2lkdGg9IjIiPjxjaXJjbGUgY3g9IjEyIiBjeT0iOCIgcj0iNCIvPjxwYXRoIGQ9Ik02IDIxdjYtMWE2IDYgMCAwIDEgMTItMXYxIi8+PC9zdmc+" class="player-img-large">
+                <div id="adminUploadZone" class="hidden">
+                    <input type="file" id="playerImgInput" hidden accept="image/*">
+                    <div class="drop-zone" onclick="document.getElementById('playerImgInput').click()" id="dropZone">Drag & Drop Image or Click</div>
+                </div>
+            </div>
+            <div class="price-display" id="popupPrice">0</div>
+            <div id="adminPopupControls" class="flex hidden" style="justify-content:center;margin-top:20px">
+                <button class="blue" onclick="popupBid()">+ Increment</button>
+                <button class="green" onclick="popupSold()">Mark SOLD</button>
+            </div>
+            <div id="viewerPopupControls" style="color:var(--muted);margin-top:10px;font-size:12px">Waiting for Auctioneer...</div>
+        </div>
+    </div>
     <div class="overlay hidden" id="soldActionOverlay">
         <div class="modal">
             <h3>Mark Player Sold</h3>
@@ -131,7 +158,7 @@ input,select{background:var(--glass);border:1px solid rgba(255,255,255,0.1);colo
                     </div>
                     <div style="margin-top:15px;border-top:1px solid rgba(255,255,255,0.1);padding-top:10px">
                         <label>Team Settings & Passwords</label>
-                        <div class="team-config-row team-config-header"><span>ID</span><span>Name</span><span>Pass</span><span>Purse</span><span>Reset</span><span>Del</span></div>
+                        <div class="team-config-row team-config-header"><span>ID</span><span>Name</span><span>Pass</span><span>Purse</span><span>Reset</span><span>Logo</span><span>Del</span></div>
                         <div id="teamsConfigContainer"></div>
                         <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px;width:100%">+ Add Team Slot</button>
                         <button id="btnSaveTeams" class="green small" style="margin-top:8px;width:100%">Save All Team Changes</button>
@@ -152,7 +179,10 @@ input,select{background:var(--glass);border:1px solid rgba(255,255,255,0.1);colo
             <div>
                 <div class="card"><strong>Live Scoreboard</strong><div id="scoreboard" style="margin-top:10px"></div></div>
                 <div class="card hidden" id="myTeamCard">
-                    <div style="display:flex;justify-content:space-between;align-items:center"><strong>My Team Dashboard</strong><button id="btnExportTeam" class="ghost" style="font-size:10px;padding:2px 6px">Export CSV</button></div>
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                        <div class="flex"><img id="myTeamLogo" class="team-logo hidden"><strong>My Team Dashboard</strong></div>
+                        <button id="btnExportTeam" class="ghost" style="font-size:10px;padding:2px 6px">Export CSV</button>
+                    </div>
                     <div id="myTeamContent" style="margin-top:10px"></div>
                 </div>
             </div>
@@ -173,55 +203,27 @@ input,select{background:var(--glass);border:1px solid rgba(255,255,255,0.1);colo
 const socket = io();
 let CURRENT_USER = {role:null,teamId:null,hostId:null};
 let STATE = {teams:[],categories:[],playersSnapshot:{},activeBids:{},soldPrices:{}};
-let pendingSold = null;
-
-const portal=document.getElementById('portal'),teamAuthOverlay=document.getElementById('teamAuthOverlay'),appContainer=document.getElementById('appContainer'),categoriesContainer=document.getElementById('categoriesContainer'),scoreboardEl=document.getElementById('scoreboard'),adminConfigCard=document.getElementById('adminConfigCard'),myTeamCard=document.getElementById('myTeamCard'),logEl=document.getElementById('log'),teamsConfigContainer=document.getElementById('teamsConfigContainer'),toastContainer=document.getElementById('toastContainer'),hammer=document.getElementById('hammer'),btnResetSystem=document.getElementById('btnResetSystem'),btnExportAdmin=document.getElementById('btnExportAdmin'),btnExportTeam=document.getElementById('btnExportTeam');
-
+let pendingSold = null, activePopupPlayer = null;
+const portal=document.getElementById('portal'),teamAuthOverlay=document.getElementById('teamAuthOverlay'),appContainer=document.getElementById('appContainer'),categoriesContainer=document.getElementById('categoriesContainer'),scoreboardEl=document.getElementById('scoreboard'),adminConfigCard=document.getElementById('adminConfigCard'),myTeamCard=document.getElementById('myTeamCard'),logEl=document.getElementById('log'),teamsConfigContainer=document.getElementById('teamsConfigContainer'),toastContainer=document.getElementById('toastContainer'),hammer=document.getElementById('hammer'),btnResetSystem=document.getElementById('btnResetSystem'),btnExportAdmin=document.getElementById('btnExportAdmin'),btnExportTeam=document.getElementById('btnExportTeam'),activePlayerPopup=document.getElementById('activePlayerPopup');
 if(hammer)hammer.addEventListener('animationend',()=>{hammer.classList.remove('swing');hammer.style.display='none'});
-
-function switchTab(t){
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    document.querySelector(`.tab[onclick="switchTab('${t}')"]`).classList.add('active');
-    document.getElementById('managerForm').classList.toggle('hidden',t!=='manager');
-    document.getElementById('participantForm').classList.toggle('hidden',t==='manager');
-}
-function managerRegister(){
-    const u=document.getElementById('mUser').value,p=document.getElementById('mPass').value;
-    if(!u||!p)return alert('Enter Creds');socket.emit('manager:register',{username:u,password:p});
-}
-function managerLogin(){
-    const u=document.getElementById('mUser').value,p=document.getElementById('mPass').value;
-    if(!u||!p)return alert('Enter Creds');socket.emit('manager:login',{username:u,password:p});
-}
-function connectToHost(){
-    const h=document.getElementById('pHostId').value;if(!h)return alert('Enter Host');socket.emit('participant:connect',h);
-}
-
+function switchTab(t){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelector(`.tab[onclick="switchTab('${t}')"]`).classList.add('active');document.getElementById('managerForm').classList.toggle('hidden',t!=='manager');document.getElementById('participantForm').classList.toggle('hidden',t==='manager');}
+function managerRegister(){const u=document.getElementById('mUser').value,p=document.getElementById('mPass').value;if(!u||!p)return alert('Enter Creds');socket.emit('manager:register',{username:u,password:p});}
+function managerLogin(){const u=document.getElementById('mUser').value,p=document.getElementById('mPass').value;if(!u||!p)return alert('Enter Creds');socket.emit('manager:login',{username:u,password:p});}
+function connectToHost(){const h=document.getElementById('pHostId').value;if(!h)return alert('Enter Host');socket.emit('participant:connect',h);}
 socket.on('auth:portal_error',m=>document.getElementById('portalMsg').textContent=m);
 socket.on('auth:portal_success',d=>{const e=document.getElementById('portalMsg');e.style.color='#10b981';e.textContent=d.msg});
 socket.on('manager:logged_in',d=>{CURRENT_USER.hostId=d.username;CURRENT_USER.role='admin';STATE=d.state;portal.classList.add('hidden');appContainer.classList.remove('hidden');setupUI();renderAll()});
-socket.on('init:teams_available',d=>{
-    CURRENT_USER.hostId=d.hostId;const s=document.getElementById('loginTeamId');
-    s.innerHTML='<option value="">Select Team</option>';d.teams.forEach(t=>s.innerHTML+=`<option value="${t.id}">${t.name}</option>`);
-    portal.classList.add('hidden');teamAuthOverlay.classList.remove('hidden');
-});
-
-function toggleTeamPass(){
-    const r=document.getElementById('loginRole').value,isT=r==='team';
-    document.getElementById('teamSelectGroup').classList.toggle('hidden',!isT);
-    document.getElementById('passGroup').classList.toggle('hidden',!isT);
-}
-function enterAuction(){
-    const r=document.getElementById('loginRole').value,t=document.getElementById('loginTeamId').value,p=document.getElementById('loginPass').value;
-    socket.emit('team:login',{hostId:CURRENT_USER.hostId,teamId:t,password:p,role:r});
-}
-
+socket.on('init:teams_available',d=>{CURRENT_USER.hostId=d.hostId;const s=document.getElementById('loginTeamId');s.innerHTML='<option value="">Select Team</option>';d.teams.forEach(t=>s.innerHTML+=`<option value="${t.id}">${t.name}</option>`);portal.classList.add('hidden');teamAuthOverlay.classList.remove('hidden');});
+function toggleTeamPass(){const r=document.getElementById('loginRole').value,isT=r==='team';document.getElementById('teamSelectGroup').classList.toggle('hidden',!isT);document.getElementById('passGroup').classList.toggle('hidden',!isT);}
+function previewTeamLogo(){const tid=document.getElementById('loginTeamId').value,t=STATE.teams?.find(x=>x.id===tid);document.getElementById('loginTeamLogoPreview').innerHTML=t?.logo?`<img src="${t.logo}" class="team-logo-large">`:''}
+function enterAuction(){const r=document.getElementById('loginRole').value,t=document.getElementById('loginTeamId').value,p=document.getElementById('loginPass').value;socket.emit('team:login',{hostId:CURRENT_USER.hostId,teamId:t,password:p,role:r});}
 socket.on('auth:team_error',m=>document.getElementById('teamAuthMsg').textContent=m);
 socket.on('auction:enter',d=>{CURRENT_USER.role=d.role;CURRENT_USER.teamId=d.teamId;STATE=d.state;teamAuthOverlay.classList.add('hidden');appContainer.classList.remove('hidden');setupUI();renderAll()});
 socket.on('state:updated',n=>{STATE=n;renderAll();if(CURRENT_USER.role==='admin')renderTeamConfigForm()});
 socket.on('player:bid',p=>{
     const e=getPlayerEl(p.category,p.name);
     if(e){e.dataset.price=p.price;e.querySelector('.price').textContent=p.price;e.classList.add('bidding','has-bid');setTimeout(()=>e.classList.remove('bidding'),300)}
+    if(activePopupPlayer&&activePopupPlayer.name===p.name)document.getElementById('popupPrice').textContent=p.price;
     log(`BID: ${p.name} -> ${p.price}`);
 });
 socket.on('player:sold',d=>{
@@ -235,11 +237,25 @@ socket.on('player:sold',d=>{
     const au=document.getElementById('hammerAudio');if(au){au.pause();au.currentTime=0;au.play().catch(console.log)}
     hammer.style.display='block';hammer.classList.remove('swing');void hammer.offsetWidth;hammer.classList.add('swing');
     setTimeout(()=>ov.classList.add('hidden'),3500);
+    activePlayerPopup.classList.add('hidden');activePopupPlayer=null;
     renderScoreboard();renderMyTeam();log(`SOLD: ${name} to ${tn} for ${price}`);
 });
+socket.on('popup:open',d=>{
+    activePopupPlayer=d;activePlayerPopup.classList.remove('hidden');
+    document.getElementById('popupPlayerName').textContent=d.name;
+    document.getElementById('popupCategory').textContent=d.category;
+    document.getElementById('popupPrice').textContent=d.currentPrice||d.basePrice;
+    document.getElementById('popupPlayerImg').src=d.image||"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTRhM2I4IiBzdHJva2Utd2lkdGg9IjIiPjxjaXJjbGUgY3g9IjEyIiBjeT0iOCIgcj0iNCIvPjxwYXRoIGQ9Ik02IDIxdjYtMWE2IDYgMCAwIDEgMTItMXYxIi8+PC9zdmc+";
+    const isAdmin=CURRENT_USER.role==='admin';
+    document.getElementById('adminUploadZone').classList.toggle('hidden',!isAdmin);
+    document.getElementById('adminPopupControls').classList.toggle('hidden',!isAdmin);
+    document.getElementById('viewerPopupControls').classList.toggle('hidden',isAdmin);
+    document.getElementById('viewerPopupControls').innerHTML=`Current Bid: ${d.currentPrice||d.basePrice}`;
+});
+socket.on('popup:close',()=>{activePlayerPopup.classList.add('hidden');activePopupPlayer=null});
+socket.on('popup:update_image',d=>{if(activePopupPlayer)document.getElementById('popupPlayerImg').src=d.imageUrl});
 socket.on('admin:toast',d=>{if(CURRENT_USER.role==='admin')showToast(d.msg)});
 socket.on('players:load',d=>renderCategoryPlayers(d.category,d.players));
-
 function setupUI(){
     document.getElementById('roleDisplay').textContent=`Host: ${CURRENT_USER.hostId} | ${CURRENT_USER.role.toUpperCase()}`;
     const ia=CURRENT_USER.role==='admin';
@@ -254,10 +270,15 @@ function renderAll(){
     });
 }
 function renderTeamConfigForm(){teamsConfigContainer.innerHTML='';STATE.teams.forEach(t=>addTeamInputRow(t))}
-function addTeamInputRow(t={id:'',name:'',password:'',purse:500}){
+function addTeamInputRow(t={id:'',name:'',password:'',purse:500,logo:''}){
     const r=document.createElement('div');r.className='team-config-row';
-    r.innerHTML=`<input class="t-id" value="${t.id||''}" placeholder="ID"><input class="t-name" value="${t.name||''}" placeholder="Name"><input class="t-pass" value="${t.password||''}" placeholder="Pass"><input class="t-purse" type="number" value="${t.purse}" placeholder="Purse"><button class="yellow small" onclick="alert('Edit purse to reset')">↺</button><button class="red small" onclick="this.parentElement.remove()">X</button>`;
+    r.innerHTML=`<input class="t-id" value="${t.id||''}" placeholder="ID"><input class="t-name" value="${t.name||''}" placeholder="Name"><input class="t-pass" value="${t.password||''}" placeholder="Pass"><input class="t-purse" type="number" value="${t.purse}" placeholder="Purse"><button class="yellow small" onclick="alert('Edit purse to reset')">↺</button><div style="position:relative"><input type="file" class="t-logo-input" style="display:none" onchange="uploadTeamLogo(this,'${t.id}')"><button class="blue small" onclick="this.previousElementSibling.click()">Icon</button></div><button class="red small" onclick="this.parentElement.remove()">X</button>`;
     teamsConfigContainer.appendChild(r);
+}
+function uploadTeamLogo(inp,tid){
+    const f=inp.files[0];if(!f)return;
+    const fd=new FormData();fd.append('file',f);
+    fetch('/upload',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{socket.emit('admin:setTeamLogo',{teamId:tid,logoUrl:d.url});showToast('Logo Uploaded')});
 }
 function renderCategoriesStructure(){
     categoriesContainer.innerHTML='';
@@ -281,14 +302,29 @@ function renderCategoryPlayers(cid,pl){
         const k=`${cid}:${p.name}`,sp=STATE.soldPrices[k],ab=STATE.activeBids[k],dp=sp||ab||p.price||cfg.base;
         el.dataset.price=dp;
         el.className=`player ${sold?'sold':''} ${ab&&!sold?'has-bid':''}`;
+        if(CURRENT_USER.role==='admin') el.style.cursor='pointer';
         let act='';
         if(sold)act=`<div class="small" style="color:#7c3aed">Sold: ${to}</div>`;
-        else if(CURRENT_USER.role==='admin')act=`<button class="btn-bid small">+${cfg.increment}</button><button class="btn-sold green small" style="margin-left:4px">Sold</button><button class="yellow small" style="margin-left:4px" onclick="resetPlayer('${cid}','${p.name}')">↺</button>`;
-        else if(CURRENT_USER.role==='team')act=`<button class="btn-bid-req ghost small">Bid Request</button>`;
+        else if(CURRENT_USER.role==='admin') { 
+            el.onclick=(e)=>{if(!e.target.closest('button')) openAdminPopup(cid,p.name,dp,cfg.base,p.image)}; 
+            act=`<button class="yellow small" title="Reset" onclick="resetPlayer('${cid}','${p.name}')">↺</button>`; 
+        }
+        else if(CURRENT_USER.role==='team') {
+            const myTeam = STATE.teams.find(t=>t.id===CURRENT_USER.teamId);
+            const canImpact = myTeam && !myTeam.impactUsed && !myTeam.impactActive;
+            act=`<button class="btn-bid-req ghost small">Bid Request</button>`;
+            if(canImpact) act += `<button class="btn-impact yellow small" style="margin-left:4px" title="Use Impact (One Time!)">⚡</button>`;
+        }
         el.innerHTML=`<div class="left"><div class="badge">${cid}</div><div class="name">${p.name}</div></div><div class="right" style="display:flex;align-items:center;gap:8px"><div class="price">${dp}</div><div class="actions">${act}</div></div>`;
         if(!sold){
-            const bb=el.querySelector('.btn-bid');if(bb)bb.onclick=()=>socket.emit('player:bid',{category:cid,name:p.name,price:Number(el.dataset.price)+Number(cfg.increment)});
-            const bs=el.querySelector('.btn-sold');if(bs)bs.onclick=()=>openSoldConfirmation(cid,p.name,el.dataset.price);
+            const bImp=el.querySelector('.btn-impact');
+            if(bImp) {
+                bImp.onclick = () => {
+                    if(confirm(`Activate Impact on ${p.name}? If you lose this player, you LOSE the impact money forever.`)) {
+                        socket.emit('team:activateImpact', {teamId: CURRENT_USER.teamId, category: cid, playerName: p.name});
+                    }
+                }
+            }
             const br=el.querySelector('.btn-bid-req');
             if(br)br.onclick=()=>{
                 const t=STATE.teams.find(x=>x.id===CURRENT_USER.teamId);
@@ -306,12 +342,17 @@ function renderCategoryPlayers(cid,pl){
 function renderScoreboard(){
     scoreboardEl.innerHTML='';STATE.teams.forEach(t=>{
         const c=t.purchases?Object.keys(t.purchases).length:0;
-        scoreboardEl.innerHTML+=`<div class="team-row"><div><strong>${t.name}</strong></div><div style="text-align:right"><div>৳ ${t.purse}</div><div class="small" style="color:var(--muted)">${c} Players</div></div></div>`;
+        scoreboardEl.innerHTML+=`<div class="team-row">
+            <div class="flex">${t.logo?`<img src="${t.logo}" class="team-logo">`:''}<strong>${t.name}</strong></div>
+            <div style="text-align:right"><div>৳ ${t.purse}</div><div class="small" style="color:var(--muted)">${c} Players</div></div>
+        </div>`;
     });
 }
 function renderMyTeam(){
     if(CURRENT_USER.role!=='team')return;
     const t=STATE.teams.find(x=>x.id===CURRENT_USER.teamId);if(!t)return;
+    const img=document.getElementById('myTeamLogo');
+    if(t.logo){img.src=t.logo;img.classList.remove('hidden')}else img.classList.add('hidden');
     let h=`<div style="font-size:24px;font-weight:bold;margin-bottom:10px">Purse: ৳ ${t.purse}</div><strong>My Purchases:</strong>`;
     if(t.purchases)Object.entries(t.purchases).forEach(([c,n])=>{if(n)h+=`<div style="padding:5px;border-bottom:1px solid rgba(255,255,255,0.05)">[${c}] ${n}</div>`});
     document.getElementById('myTeamContent').innerHTML=h;
@@ -330,7 +371,34 @@ function downloadCSV(){
     l.download=`auction_${CURRENT_USER.hostId}.csv`;document.body.appendChild(l);l.click();l.remove();
 }
 btnExportAdmin.onclick=downloadCSV;btnExportTeam.onclick=downloadCSV;
-
+// POPUP LOGIC
+function openAdminPopup(c,n,p,base,img){
+    socket.emit('admin:select_player',{category:c,name:n,currentPrice:p,basePrice:base,image:img});
+}
+function closePopup(){socket.emit('admin:close_popup');}
+function popupBid(){
+    if(!activePopupPlayer)return;
+    const cfg=STATE.categories.find(c=>c.id===activePopupPlayer.category);
+    const np=Number(document.getElementById('popupPrice').textContent)+Number(cfg.increment);
+    socket.emit('player:bid',{category:activePopupPlayer.category,name:activePopupPlayer.name,price:np});
+}
+function popupSold(){if(!activePopupPlayer)return;openSoldConfirmation(activePopupPlayer.category,activePopupPlayer.name,document.getElementById('popupPrice').textContent);}
+// DRAG DROP
+const dz=document.getElementById('dropZone'),fi=document.getElementById('playerImgInput');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
+dz.addEventListener('dragleave',e=>{e.preventDefault();dz.classList.remove('dragover')});
+dz.addEventListener('drop',e=>{
+    e.preventDefault();dz.classList.remove('dragover');
+    if(e.dataTransfer.files.length){fi.files=e.dataTransfer.files;handleImageUpload()}
+});
+fi.addEventListener('change',handleImageUpload);
+function handleImageUpload(){
+    if(!activePopupPlayer||!fi.files[0])return;
+    const fd=new FormData();fd.append('file',fi.files[0]);
+    fetch('/upload',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{
+        socket.emit('admin:update_player_image',{category:activePopupPlayer.category,name:activePopupPlayer.name,imageUrl:d.url});
+    });
+}
 function openSoldConfirmation(c,n,p){
     pendingSold={category:c,name:n,price:Number(p)};
     document.getElementById('soldActionDetails').textContent=`${n} (${c}) @ ${p}`;
