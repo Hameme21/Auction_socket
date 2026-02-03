@@ -5,24 +5,19 @@ const admin = require('firebase-admin');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
-
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] }});
 const PORT = process.env.PORT || 3000;
-
 const uploadDir = path.join(__dirname, 'public/uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
     filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_'))
 });
 const upload = multer({ storage: storage });
-
 app.use(express.static('public'));
 app.use('/uploads', express.static(uploadDir));
-
 let serviceAccount;
 try {
     serviceAccount = process.env.FIREBASE_JSON ? JSON.parse(process.env.FIREBASE_JSON) : require('./firebase-service-account.json');
@@ -30,13 +25,10 @@ try {
     console.error("No Firebase Key.");
     process.exit(1);
 }
-
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
-
 let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
-
 async function saveToFirebase() { try { await DOC_REF.set(STATE); } catch (e) { console.error(e); }}
 async function loadFromFirebase() {
     try {
@@ -45,20 +37,16 @@ async function loadFromFirebase() {
         else { await saveToFirebase(); }
     } catch (e) { console.log(e); }
 }
-
 app.post('/upload', upload.any(), (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No file.');
     res.json({ url: `/uploads/${req.files[0].filename}` });
 });
-
 io.on('connection', (socket) => {
     if (STATE.currentActivePlayer) socket.emit('popup:open', STATE.currentActivePlayer);
-
     socket.on('manager:login', ({ username, password }) => {
         if (STATE.managers && STATE.managers[username] === password) socket.emit('manager:logged_in', { username, state: STATE });
         else socket.emit('auth:portal_error', 'Invalid Creds');
     });
-
     socket.on('manager:register', ({ username, password }) => {
         if (!STATE.managers) STATE.managers = {};
         if (STATE.managers[username]) return socket.emit('auth:portal_error', 'Taken');
@@ -66,55 +54,51 @@ io.on('connection', (socket) => {
         saveToFirebase();
         socket.emit('auth:portal_success', { msg: 'Created' });
     });
-
     socket.on('participant:connect', (hostId) => {
         if (!STATE.managers || !STATE.managers[hostId]) return socket.emit('auth:portal_error', 'Host Not Found');
         socket.emit('init:teams_available', { hostId, teams: STATE.teams || [] });
     });
-
     socket.on('team:login', ({ teamId, password, role }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         if (role === 'team' && (!team || team.password !== password)) return socket.emit('auth:team_error', 'Bad Pass');
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
-
-    socket.on('team:activateImpact', ({ teamId }) => {
+    socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         const bonus = Number(STATE.config.impactAmount) || 0;
         if (team && !team.impactUsed && !team.impactActive && bonus > 0) {
             team.purse = Number(team.purse) + bonus;
             team.impactActive = true;
-            io.emit('admin:toast', { msg: `⚡ IMPACT: ${team.name} +${bonus}`, type: 'impact' });
+            team.impactUsed = true; 
+            team.impactTarget = `${category}:${playerName}`; 
+            io.emit('admin:toast', { msg: `⚡ IMPACT ACTIVATED: ${team.name} for ${playerName}`, type: 'impact' });
             io.emit('state:updated', STATE);
             saveToFirebase();
         }
     });
-
     socket.on('admin:resetImpact', ({ teamId }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         const bonus = Number(STATE.config.impactAmount) || 0;
-        if (team && (team.impactUsed || team.impactActive)) {
+        if (team && team.impactActive) {
             team.purse = Number(team.purse) - bonus;
             team.impactUsed = false;
             team.impactActive = false;
+            team.impactTarget = null;
             io.emit('admin:toast', { msg: `↩️ Reset Impact: ${team.name}`, type: 'normal' });
             io.emit('state:updated', STATE);
             saveToFirebase();
         }
     });
-
     socket.on('admin:select_player', (playerData) => {
         STATE.currentActivePlayer = playerData;
         io.emit('popup:open', playerData);
         saveToFirebase();
     });
-
     socket.on('admin:close_popup', () => {
         STATE.currentActivePlayer = null;
         io.emit('popup:close');
         saveToFirebase();
     });
-
     socket.on('admin:update_player_image', ({ category, name, imageUrl }) => {
         if (STATE.playersSnapshot[category]) {
             const p = STATE.playersSnapshot[category].find(x => x.name === name);
@@ -125,7 +109,6 @@ io.on('connection', (socket) => {
         io.emit('popup:update_image', { imageUrl });
         saveToFirebase();
     });
-
     socket.on('player:bid', (data) => {
         const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
@@ -134,12 +117,9 @@ io.on('connection', (socket) => {
         io.emit('player:bid', data);
         saveToFirebase();
     });
-
-    // Added Missing Handler
     socket.on('bid:request', (data) => {
         io.emit('admin:toast', { msg: `✋ Bid Req: ${data.teamName} for ${data.playerName}` });
     });
-
     socket.on('player:sold', (data) => {
         const team = STATE.teams.find(t => t.id === data.teamId);
         if (team) {
@@ -148,23 +128,22 @@ io.on('connection', (socket) => {
             team.purchases[data.category] = data.name;
             if (!STATE.soldPrices) STATE.soldPrices = {};
             STATE.soldPrices[`${data.category}:${data.name}`] = data.price;
-
             const bonus = Number(STATE.config.impactAmount) || 0;
+            const soldKey = `${data.category}:${data.name}`;
             STATE.teams.forEach(t => {
                 if (t.impactActive) {
-                    if (t.id !== data.teamId) t.purse = Number(t.purse) - bonus;
-                    t.impactUsed = true;
-                    t.impactActive = false;
+                    if(t.impactTarget === soldKey) {
+                        if(t.id === data.teamId) { t.impactActive = false; } 
+                        else { t.purse = Number(t.purse) - bonus; t.impactActive = false; }
+                    }
                 }
             });
-
             STATE.currentActivePlayer = null;
             io.emit('popup:close');
             io.emit('player:sold', { payload: data, teams: STATE.teams });
             saveToFirebase();
         }
     });
-
     socket.on('admin:updateConfig', (newConfig) => {
         if (newConfig.impactAmount !== undefined) {
             if (!STATE.config) STATE.config = {};
@@ -178,7 +157,8 @@ io.on('connection', (socket) => {
                     logo: nt.logo || (ot ? ot.logo : null),
                     purchases: ot ? ot.purchases : {},
                     impactUsed: ot ? ot.impactUsed : false,
-                    impactActive: ot ? ot.impactActive : false
+                    impactActive: ot ? ot.impactActive : false,
+                    impactTarget: ot ? ot.impactTarget : null
                 };
             });
         }
@@ -186,12 +166,10 @@ io.on('connection', (socket) => {
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
-
     socket.on('admin:setTeamLogo', ({ teamId, logoUrl }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         if (team) { team.logo = logoUrl; io.emit('state:updated', STATE); saveToFirebase(); }
     });
-
     socket.on('admin:resetPlayer', ({ category, name }) => {
         STATE.teams.forEach(t => {
             if (t.purchases && t.purchases[category] === name) {
@@ -206,7 +184,6 @@ io.on('connection', (socket) => {
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
-
     socket.on('admin:resetAll', () => {
         STATE.activeBids = {};
         STATE.soldPrices = {};
@@ -215,11 +192,11 @@ io.on('connection', (socket) => {
             t.purchases = {};
             t.impactUsed = false;
             t.impactActive = false;
+            t.impactTarget = null;
         });
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
-
     socket.on('players:save', ({ category, players }) => {
         if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         const existing = STATE.playersSnapshot[category] || [];
@@ -231,7 +208,6 @@ io.on('connection', (socket) => {
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
-
     socket.on('players:clear', ({ category }) => {
         if (STATE.playersSnapshot[category]) {
             delete STATE.playersSnapshot[category];
@@ -239,12 +215,10 @@ io.on('connection', (socket) => {
             saveToFirebase();
         }
     });
-
     socket.on('admin:deleteCategory', ({ id }) => {
         STATE.categories = STATE.categories.filter(c => c.id !== id);
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
 });
-
 loadFromFirebase().then(() => { server.listen(PORT, () => console.log(`Running on ${PORT}`)); });
