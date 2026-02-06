@@ -60,7 +60,7 @@
     .price{font-size:18px;font-weight:700;}
     
     /* --- Team Settings Grid --- */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
     .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
     /* --- Scoreboard --- */
@@ -331,7 +331,7 @@
     const portal = document.getElementById('portal');
     const teamAuthOverlay = document.getElementById('teamAuthOverlay');
     const appContainer = document.getElementById('appContainer');
-    const activePlayerOverlay = document.getElementById('activePlayerOverlay'); // Added
+    const activePlayerOverlay = document.getElementById('activePlayerOverlay');
     
     const categoriesContainer = document.getElementById('categoriesContainer');
     const scoreboardEl = document.getElementById('scoreboard');
@@ -430,7 +430,7 @@
         const div = document.getElementById('loginTeamLogoPreview');
         div.innerHTML = '';
         if(t && t.logo) {
-            div.innerHTML = `<img src="${t.logo}" class="team-logo-large">`;
+            div.innerHTML = `<img src="${t.logo}" class="team-logo" style="width:80px;height:80px;border:2px solid #7c3aed">`;
         }
     }
 
@@ -500,7 +500,7 @@
             adminControls.classList.remove('hidden');
             closeBtn.classList.remove('hidden');
             fileInp.classList.remove('hidden');
-            impactArea.classList.add('hidden'); // Admin doesn't use impact
+            impactArea.classList.add('hidden');
         } else {
             adminControls.classList.add('hidden');
             closeBtn.classList.add('hidden');
@@ -548,9 +548,15 @@
 
     socket.on('state:updated', (newState) => {
       STATE = newState;
+      
+      // FIX: SYNC POPUP STATE IF IT MATCHES
+      if(STATE.currentActivePlayer && currentPopupPlayer && STATE.currentActivePlayer.name === currentPopupPlayer.name) {
+          currentPopupPlayer = STATE.currentActivePlayer;
+      }
+      
       renderAll();
       if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
-      if(currentPopupPlayer) updatePopupUI(); // Update popup in case impact state changed
+      if(currentPopupPlayer) updatePopupUI(); // Update popup
     });
 
     socket.on('player:bid', (pl) => {
@@ -655,7 +661,6 @@
       STATE.teams.forEach((t) => addTeamInputRow(t));
     }
 
-    // UPDATED: Added Logo Upload and Impact Reset in config row
     function addTeamInputRow(teamData = {id:'', name:'', password:'', purse:500}) {
       const row = document.createElement('div');
       row.className = 'team-config-row';
@@ -886,7 +891,6 @@
     
     // -- Action Helpers for Admin --
     window.activatePlayer = (cat, name, price, img) => {
-        // Find current price if bids exist
         const key = `${cat}:${name}`;
         const currentPrice = STATE.activeBids[key] || price;
         socket.emit('admin:select_player', { category: cat, name, price: currentPrice, image: img });
