@@ -75,6 +75,19 @@ io.on('connection', (socket) => {
             saveToFirebase();
         }
     });
+    socket.on('admin:resetTeam', ({ teamId }) => {
+        const team = STATE.teams.find(t => t.id === teamId);
+        if (team) {
+            team.purse = 500;
+            team.purchases = {};
+            team.impactUsed = false;
+            team.impactActive = false;
+            team.impactTarget = null;
+            io.emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
+            io.emit('state:updated', STATE);
+            saveToFirebase();
+        }
+    });
     socket.on('admin:select_player', (playerData) => { STATE.currentActivePlayer = playerData; io.emit('popup:open', playerData); saveToFirebase(); });
     socket.on('admin:close_popup', () => { STATE.currentActivePlayer = null; io.emit('popup:close'); saveToFirebase(); });
     socket.on('admin:update_player_image', ({ category, name, imageUrl }) => {
@@ -138,7 +151,7 @@ io.on('connection', (socket) => {
         io.emit('state:updated', STATE);
         saveToFirebase();
     });
-    socket.on('admin:resetAll', () => { STATE.activeBids = {}; STATE.soldPrices = {}; STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.impactTarget = null; }); io.emit('state:updated', STATE); saveToFirebase(); });
+    socket.on('admin:resetAll', () => { STATE.activeBids = {}; STATE.soldPrices = {}; STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.impactTarget = null; }); io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); saveToFirebase(); });
     socket.on('players:save', ({ category, players }) => {
         if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         const existing = STATE.playersSnapshot[category] || [];
