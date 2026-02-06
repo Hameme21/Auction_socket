@@ -80,12 +80,19 @@
         display: none; animation: popUp 0.3s ease-out;
     }
     @keyframes popUp { from{transform:translate(-50%, 100%);} to{transform:translate(-50%, 0);} }
+    
+    /* --- UPDATED: Avatar Circle Style --- */
     .popup-img-zone {
-        width: 100%; height: 200px; border: 2px dashed #475569;
-        border-radius: 8px; display: flex; align-items: center; justify-content: center;
-        margin-bottom: 15px; background: rgba(0,0,0,0.2); position: relative; overflow: hidden;
+        width: 140px; height: 140px; /* Circle Size */
+        border: 2px dashed #475569;
+        border-radius: 50%; /* Make it a circle */
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        margin: 0 auto 15px auto; /* Center horizontally */
+        background: rgba(0,0,0,0.2); position: relative; overflow: hidden;
+        cursor: pointer; transition: border-color 0.2s;
     }
-    .popup-img-zone img { width: 100%; height: 100%; object-fit: contain; }
+    .popup-img-zone:hover { border-color: var(--accent); }
+    .popup-img-zone img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
     .popup-img-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
     /* --- Toast --- */
@@ -121,6 +128,17 @@
       border: 1px solid rgba(255,255,255,0.3); background: #000; vertical-align: middle;
     }
     
+    .team-logo-large { 
+      width: 100px; height: 100px; 
+      object-fit: cover; border-radius: 50%; 
+      margin: 0 auto 15px auto; 
+      display: block; 
+      border: 3px solid var(--accent); 
+      box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
+      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes popIn { from{transform:scale(0);opacity:0;} to{transform:scale(1);opacity:1;} }
+
     .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
     .team-config-header { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; }
     @media (max-width:900px){.grid{grid-template-columns:1fr;}}
@@ -188,9 +206,9 @@
            <button id="btnClosePopup" class="ghost small hidden" onclick="closePopup()">Close</button>
         </div>
         
-        <div class="popup-img-zone" id="popupImgZone">
-           <span id="popupDropText" style="pointer-events:none">Drag Image Here</span>
-           <img id="popupImg" class="hidden">
+        <div class="popup-img-zone" id="popupImgZone" title="Double click to upload or Drag & Drop">
+           <span id="popupDropText" style="pointer-events:none; font-size:12px;">Drag / Dbl Click</span>
+           <img id="popupImg" class="hidden" onerror="handleImgError(this)">
            <input type="file" id="popupFileInput" accept="image/*" class="hidden" onchange="selectActiveImage(this)">
         </div>
         
@@ -348,12 +366,26 @@
     const btnExportAdmin = document.getElementById('btnExportAdmin');
     const btnExportTeam = document.getElementById('btnExportTeam');
 
-    // Hammer Reset Listener
     if(hammer) {
       hammer.addEventListener('animationend', () => {
         hammer.classList.remove('swing');
         hammer.style.display = 'none';
       });
+    }
+
+    // --- ERROR HANDLING FOR IMAGES ---
+    function handleImgError(img) {
+        if (!img.dataset.retried) {
+            img.dataset.retried = "true";
+            setTimeout(() => {
+                const src = img.src;
+                img.src = ""; // Clear
+                img.src = src; // Retry
+            }, 1500);
+        } else {
+            img.style.display = 'none'; 
+            document.getElementById('popupDropText').classList.remove('hidden');
+        }
     }
 
     // --- PORTAL LOGIC ---
@@ -389,7 +421,6 @@
         socket.emit('participant:connect', h);
     }
 
-    // Portal Responses
     socket.on('auth:portal_error', (msg) => document.getElementById('portalMsg').textContent = msg);
     socket.on('auth:portal_success', (data) => {
         const el = document.getElementById('portalMsg');
@@ -397,7 +428,6 @@
         el.textContent = data.msg;
     });
 
-    // Manager Login Success
     socket.on('manager:logged_in', (data) => {
         CURRENT_USER.hostId = data.username;
         CURRENT_USER.role = 'admin';
@@ -408,7 +438,6 @@
         renderAll();
     });
 
-    // Participant Connect Success (Go to Step 2)
     socket.on('init:teams_available', (data) => {
         CURRENT_USER.hostId = data.hostId;
         const sel = document.getElementById('loginTeamId');
@@ -433,7 +462,7 @@
         const div = document.getElementById('loginTeamLogoPreview');
         div.innerHTML = '';
         if(t && t.logo) {
-            div.innerHTML = `<img src="${t.logo}" class="team-logo" style="width:80px;height:80px;border:2px solid #7c3aed">`;
+            div.innerHTML = `<img src="${t.logo}" class="team-logo-large">`;
         }
     }
 
@@ -465,7 +494,7 @@
     socket.on('popup:close', () => {
         currentPopupPlayer = null;
         activePlayerOverlay.style.display = 'none';
-        tempPlayerImageFile = null; // Clear temp
+        tempPlayerImageFile = null; 
     });
     
     socket.on('popup:update_image', ({ imageUrl }) => {
@@ -488,15 +517,20 @@
         const fileInp = document.getElementById('popupFileInput');
         const saveBtn = document.getElementById('btnSaveImg');
 
-        // Check if we have a temporary local image to show first
+        // Reset retry counter for new images
+        img.dataset.retried = "";
+
+        // 1. Prioritize Local Temp Preview
         if (tempPlayerImageFile) {
             img.src = URL.createObjectURL(tempPlayerImageFile);
             img.classList.remove('hidden');
             dropText.classList.add('hidden');
-            saveBtn.classList.remove('hidden'); // Show save button
+            saveBtn.classList.remove('hidden'); 
         } 
+        // 2. Then Server Image
         else if (player.image) {
-            img.src = player.image + '?t=' + new Date().getTime(); // Anti-cache
+            // Add timestamp to force browser to re-fetch even if cached 404
+            img.src = player.image + '?t=' + new Date().getTime();
             img.classList.remove('hidden');
             dropText.classList.add('hidden');
             saveBtn.classList.add('hidden'); 
@@ -517,22 +551,24 @@
             fileInp.classList.remove('hidden');
             impactArea.classList.add('hidden');
 
-            // Setup Drag & Drop
             zone.ondragover = (e) => { e.preventDefault(); zone.style.borderColor = '#7c3aed'; };
             zone.ondragleave = () => { zone.style.borderColor = '#475569'; };
             zone.ondrop = (e) => {
                 e.preventDefault();
                 if(e.dataTransfer.files[0]) selectActiveImage({ files: e.dataTransfer.files });
             };
-            zone.onclick = () => fileInp.click();
+            
+            // UPDATED: Double click to upload, remove single click trigger
+            zone.ondblclick = () => fileInp.click();
+            zone.onclick = null; 
 
         } else {
             adminControls.classList.add('hidden');
             closeBtn.classList.add('hidden');
             fileInp.classList.add('hidden');
             zone.onclick = null;
+            zone.ondblclick = null;
             
-            // --- IMPACT LOGIC ---
             if(CURRENT_USER.role === 'team') {
                 const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
                 const impactAmount = STATE.config?.impactAmount || 0;
@@ -556,11 +592,10 @@
     }
     
     // --- IMAGE SAVING LOGIC ---
-    
     function selectActiveImage(input) {
         if(input.files && input.files[0]) {
             tempPlayerImageFile = input.files[0];
-            updatePopupUI(); // Refreshes to show local preview and Save Button
+            updatePopupUI();
         }
     }
 
@@ -580,7 +615,7 @@
                    name: currentPopupPlayer.name, 
                    imageUrl: d.url 
                });
-               tempPlayerImageFile = null; // Clear local temp
+               tempPlayerImageFile = null; 
                showToast("Image Saved!");
                document.getElementById('btnSaveImg').classList.add('hidden');
             }
@@ -589,17 +624,14 @@
         }
     }
 
-    // --- IMPACT FUNCTION ---
     window.activateImpact = () => {
         if(!currentPopupPlayer) return;
         if(!confirm("Are you sure? You can only use this ONCE.")) return;
-        
         socket.emit('team:activateImpact', { 
             teamId: CURRENT_USER.teamId, 
             category: currentPopupPlayer.category, 
             playerName: currentPopupPlayer.name 
         });
-        
         document.getElementById('teamImpactArea').classList.add('hidden');
     };
     
@@ -607,17 +639,13 @@
 
     socket.on('state:updated', (newState) => {
       STATE = newState;
-      
-      // Sync popup state
       if(STATE.currentActivePlayer && currentPopupPlayer && STATE.currentActivePlayer.name === currentPopupPlayer.name) {
           if (!tempPlayerImageFile) {
              currentPopupPlayer = STATE.currentActivePlayer;
           } else {
-             // Keep local image if editing
              currentPopupPlayer.currentPrice = STATE.currentActivePlayer.currentPrice;
           }
       }
-      
       renderAll();
       if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
       if(currentPopupPlayer) updatePopupUI();
@@ -628,7 +656,6 @@
           currentPopupPlayer.currentPrice = pl.price;
           updatePopupUI();
       }
-      
       const el = getPlayerEl(pl.category, pl.name);
       if(el) {
         el.dataset.price = pl.price;
@@ -754,14 +781,10 @@
 
       STATE.categories.forEach(cat => {
         const div = document.createElement('div');
-        
         let headerControls = `<span class="small">Base: ${cat.base} | Inc: ${cat.increment}</span>`;
         if (CURRENT_USER.role === 'admin') {
-           headerControls += `
-             <button class="red small" onclick="deleteCat('${cat.id}')" style="padding:2px 6px; margin-left:4px; font-size:10px;">X</button>
-           `;
+           headerControls += `<button class="red small" onclick="deleteCat('${cat.id}')" style="padding:2px 6px; margin-left:4px; font-size:10px;">X</button>`;
         }
-
         div.innerHTML = `
           <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
             <label style="color:white; font-weight:bold;">Category ${cat.id}</label>
@@ -777,12 +800,9 @@
           <div class="players" id="playersList-${cat.id}"></div>
         `;
         categoriesContainer.appendChild(div);
-
         if(CURRENT_USER.role === 'admin') {
           const ta = div.querySelector('textarea');
-          ta.addEventListener('input', () => {
-             // Local preview logic if desired, or just wait for save
-          });
+          ta.addEventListener('input', () => { });
         }
       });
     }
@@ -821,10 +841,7 @@
         if(isSold) {
           actionHTML = `<div class="small" style="color:#7c3aed">Sold: ${soldTo}</div>`;
         } else if(CURRENT_USER.role === 'admin') {
-          // MODIFIED: Pass simple args, look up data in STATE inside activatePlayer
-          actionHTML = `
-            <button class="btn-bid small" onclick="activatePlayer('${catId}', '${p.name}')">Select</button>
-          `;
+          actionHTML = `<button class="btn-bid small" onclick="activatePlayer('${catId}', '${p.name}')">Select</button>`;
         }
 
         if(CURRENT_USER.role === 'admin') {
@@ -841,7 +858,6 @@
             <div class="actions">${actionHTML}</div>
           </div>
         `;
-
         container.appendChild(el);
       });
     }
@@ -852,9 +868,7 @@
         const div = document.createElement('div');
         div.className = 'team-row';
         const count = t.purchases ? Object.keys(t.purchases).length : 0;
-        
         const logo = t.logo ? `<img src="${t.logo}" class="team-logo">` : `<div class="team-logo" style="background:#333; display:inline-block"></div>`;
-
         div.innerHTML = `
            <div style="display:flex; align-items:center;">
              ${logo}
@@ -877,7 +891,6 @@
       const div = document.getElementById('myTeamContent');
       let html = `<div style="font-size:24px; font-weight:bold; margin-bottom:10px">Purse: ৳ ${t.purse}</div>`;
       if(t.impactActive) html += '<div style="background:#fbbf24; color:black; padding:5px; margin-bottom:10px; text-align:center; font-weight:bold; border-radius:4px;">⚡ IMPACT CARD ACTIVE</div>';
-      
       html += '<strong>My Purchases:</strong>';
       if(t.purchases) {
         Object.entries(t.purchases).forEach(([cat, name]) => {
@@ -895,7 +908,6 @@
       setTimeout(() => t.remove(), 4000);
     }
 
-    // -- CSV EXPORT --
     function downloadCSV() {
         let rows = [["Category", "Player Name", "Base Price", "Sold Price", "Status", "Buyer Team"]];
         STATE.categories.forEach(cat => {
@@ -903,7 +915,6 @@
             players.forEach(p => {
                 const base = cat.base;
                 let soldPrice = 0, status = "Unsold", buyer = "-";
-                
                 const buyerTeam = STATE.teams.find(t => t.purchases && t.purchases[cat.id] === p.name);
                 if (buyerTeam) {
                     status = "Sold";
@@ -922,7 +933,6 @@
                 rows.push([cat.id, p.name, base, soldPrice, status, buyer]);
             });
         });
-
         let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -936,7 +946,6 @@
     btnExportAdmin.addEventListener('click', downloadCSV);
     btnExportTeam.addEventListener('click', downloadCSV);
 
-    // -- Admin Actions (Sold/Config) --
     function openSoldConfirmation(cat, name, price) {
       pendingSold = { category: cat, name, price: Number(price) };
       const modal = document.getElementById('soldActionOverlay');
@@ -953,18 +962,12 @@
       modal.classList.remove('hidden');
     }
     
-    // -- Action Helpers for Admin --
-    
-    // NEW: Look up image from STATE to ensure it's fresh
     window.activatePlayer = (cat, name) => {
         const players = STATE.playersSnapshot[cat] || [];
         const p = players.find(x => x.name === name);
         const image = p ? p.image : null;
-        
         const key = `${cat}:${name}`;
-        // Prioritize active bid, then player base price, then category default
         const currentPrice = STATE.activeBids[key] || (p ? p.price : 0) || STATE.categories.find(c=>c.id===cat).base;
-        
         socket.emit('admin:select_player', { category: cat, name: name, price: currentPrice, image: image });
     };
     
@@ -1012,10 +1015,8 @@
          const name = row.querySelector('.t-name').value.trim();
          const pass = row.querySelector('.t-pass').value.trim();
          const purse = row.querySelector('.t-purse').value;
-         
          const oldTeam = STATE.teams.find(t=>t.id===id) || STATE.teams[idx];
          const logo = oldTeam ? oldTeam.logo : null;
-
          if(!id || !name) valid = false;
          newTeams.push({ id, name, password: pass, purse: Number(purse), logo });
       });
@@ -1024,17 +1025,14 @@
       showToast('Teams Saved!');
     };
     
-    // Helper to upload Logo
     async function uploadTeamLogo(input, teamId) {
         if(input.files[0]) {
             const fd = new FormData(); fd.append('file', input.files[0]);
             try {
                 const res = await fetch('/upload', { method:'POST', body: fd });
                 const d = await res.json();
-                
                 const t = STATE.teams.find(x=>x.id===teamId);
                 if(t) t.logo = d.url;
-                
                 socket.emit('admin:setTeamLogo', { teamId, logoUrl: d.url });
             } catch(e) { alert('Upload error'); }
         }
@@ -1046,7 +1044,6 @@
       }
     });
 
-    // Helper Wrappers for global access
     window.resetTeam = (id) => alert("To reset a team, please edit their purse manually and click Save.");
     
     window.resetPlayer = (category, name) => {
@@ -1081,7 +1078,6 @@
         socket.emit('admin:resetImpact', { teamId });
     };
 
-    // Logging
     function getPlayerEl(cat, name) {
         const list = document.getElementById(`playersList-${cat}`);
         if(!list) return null;
