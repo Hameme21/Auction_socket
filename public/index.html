@@ -17,63 +17,48 @@
     .grid{display:grid;grid-template-columns:1fr 340px;gap:12px}
     label{display:block;margin-bottom:6px;color:var(--muted);font-size:13px}
     
-    /* Overlays */
-    #portal, #teamAuthOverlay { position: fixed; inset: 0; z-index: 5000; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-direction: column; }
-    .portal-card { background: var(--card); padding: 30px; border-radius: 12px; width: 350px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); text-align: center; }
-    .tab-nav { display: flex; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    .tab { flex: 1; padding: 10px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
-    .tab.active { color: white; border-color: var(--accent); font-weight: bold; }
+    /* Login Overlay (Unified) */
+    #loginOverlay { position: fixed; inset: 0; z-index: 5000; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-direction: column; }
+    .login-card { background: var(--card); padding: 40px; border-radius: 16px; width: 380px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 50px rgba(0,0,0,0.5); text-align: center; }
+    .login-logo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 20px; display: block; border: 3px solid var(--accent); box-shadow: 0 0 20px rgba(124, 58, 237, 0.4); }
     
     /* Buttons */
-    button{background:linear-gradient(90deg,var(--accent),#4f46e5);border:0;padding:8px 12px;color:white;border-radius:6px;cursor:pointer; font-size:13px; font-weight:600;}
+    button{background:linear-gradient(90deg,var(--accent),#4f46e5);border:0;padding:10px 12px;color:white;border-radius:6px;cursor:pointer; font-size:14px; font-weight:600; width: 100%;}
     button:hover{filter:brightness(1.1)}
-    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.1)}
-    button.green{background:#10b981;}
+    button.ghost{background:transparent;border:1px solid rgba(255,255,255,0.1); margin-top: 10px;}
+    button.small{padding: 5px 10px; font-size: 11px; width: auto;}
     button.red{background:#ef4444;}
+    button.green{background:#10b981;}
     button.yellow{background:#f59e0b;}
     button.blue{background:#3b82f6;}
-    button.small{padding: 5px 10px; font-size: 11px;}
     
-    input, select, textarea { background:var(--glass); border:1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; width: 100%; margin-bottom: 10px; }
+    input, select, textarea { background:var(--glass); border:1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 6px; width: 100%; margin-bottom: 12px; font-size: 14px; }
+    input:focus, select:focus { border-color: var(--accent); outline: none; }
 
-    /* Player List Item */
+    /* UI Components */
     .players{margin-top:10px}
     .player{display:flex;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);margin-bottom:8px; border:1px solid transparent; transition:0.2s}
     .player.sold{opacity: 0.5; border-color: #7c3aed;}
     .badge{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:8px;font-weight:700}
-    
-    /* Team Config Grid */
     .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
     .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
-    /* --- Live Active Player Popup (Req 1 & 7) --- */
-    #activePlayerOverlay {
-        position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-        width: 380px; background: #1e293b; border: 2px solid #7c3aed;
-        border-radius: 12px; padding: 20px; z-index: 4500;
-        box-shadow: 0 0 30px rgba(124, 58, 237, 0.3);
-        display: none; animation: popUp 0.3s ease-out;
-    }
+    /* Popup & Overlays */
+    #activePlayerOverlay { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: 380px; background: #1e293b; border: 2px solid #7c3aed; border-radius: 12px; padding: 20px; z-index: 4500; box-shadow: 0 0 30px rgba(124, 58, 237, 0.3); display: none; animation: popUp 0.3s ease-out; }
     @keyframes popUp { from{transform:translate(-50%, 100%);} to{transform:translate(-50%, 0);} }
-
-    .popup-img-zone {
-        width: 100%; height: 200px; border: 2px dashed #475569;
-        border-radius: 8px; display: flex; align-items: center; justify-content: center;
-        margin-bottom: 15px; background: rgba(0,0,0,0.2); position: relative; overflow: hidden;
-    }
+    .popup-img-zone { width: 100%; height: 200px; border: 2px dashed #475569; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 15px; background: rgba(0,0,0,0.2); position: relative; overflow: hidden; }
     .popup-img-zone img { width: 100%; height: 100%; object-fit: contain; }
     .popup-img-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
     
-    /* Logos (Req 4) */
     .team-logo-preview { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.2); margin-right: 10px; }
-    .login-logo { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin: 0 auto 15px; display: block; border: 2px solid var(--accent); }
+    .hidden { display: none !important; }
 
-    /* Toast (Req 5 & 6) */
+    /* Toast */
     #toastContainer {position: fixed; top: 20px; right: 20px; z-index: 6000; display: flex; flex-direction: column; gap: 10px;}
     .toast {background: #1e293b; color: #fff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #7c3aed; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out;}
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-    /* Hammer (Req 2) */
+    /* Hammer */
     #hammer{ width:120px; height:120px; transform-origin:20% 20%; pointer-events:none; position:fixed; left:50%; margin-left:-60px; top:40px; z-index:5000; display: none; }
     #hammer.swing{ display: block; animation: hammerSwing 0.6s ease-in-out forwards; }
     @keyframes hammerSwing { 0% { transform: rotate(-35deg); opacity: 0; } 10% { opacity: 1; } 50% { transform: rotate(35deg); } 100% { transform: rotate(-15deg); opacity: 0; } }
@@ -81,43 +66,42 @@
 </head>
 <body>
 
-  <div id="portal">
-    <h1 style="color:white;">Players Auction System</h1>
-    <div class="portal-card">
-      <div class="tab-nav">
-        <div class="tab active" onclick="switchTab('manager')">Manager</div>
-        <div class="tab" onclick="switchTab('participant')">Join</div>
-      </div>
-      <div id="managerForm">
-        <input id="mUser" placeholder="Username (Host ID)">
-        <input id="mPass" type="password" placeholder="Password">
-        <button onclick="managerLogin()" style="width:100%">Login</button>
-        <button onclick="managerRegister()" class="ghost" style="width:100%; margin-top:5px; font-size:12px">Register</button>
-      </div>
-      <div id="participantForm" class="hidden">
-        <input id="pHostId" placeholder="Host ID">
-        <button onclick="connectToHost()" style="width:100%">Connect</button>
-      </div>
-      <div id="portalMsg" style="color:#ef4444; margin-top:10px; font-size:13px;"></div>
-    </div>
-  </div>
-
-  <div id="teamAuthOverlay" class="hidden">
-    <div class="portal-card">
-      <div id="loginLogoContainer" class="hidden"><img id="loginTeamLogo" class="login-logo"></div>
-      <h3>Auction Login</h3>
-      <select id="loginRole" onchange="toggleTeamPass()">
-        <option value="listener">Viewer</option>
+  <div id="loginOverlay">
+    <div class="login-card">
+      <img id="loginLogoPreview" class="login-logo hidden">
+      <h2 style="margin-top:0; color:white;">Auction Login</h2>
+      
+      <select id="roleSelect" onchange="updateLoginUI()">
+        <option value="manager">Manager (Admin)</option>
         <option value="team">Team Representative</option>
+        <option value="viewer">Viewer</option>
       </select>
-      <div id="teamSelectGroup" class="hidden">
-         <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
+
+      <div id="adminFields">
+        <input id="mUser" placeholder="Username (e.g. admin)">
+        <input id="mPass" type="password" placeholder="Password">
+        <div class="flex" style="gap:10px">
+          <button onclick="managerLogin()" class="blue">Login</button>
+          <button onclick="managerRegister()" class="ghost" style="margin-top:0">Register</button>
+        </div>
       </div>
-      <div id="passGroup" class="hidden">
-        <input type="password" id="loginPass" placeholder="Team Password">
+
+      <div id="participantFields" class="hidden">
+        <div class="flex" style="margin-bottom:10px">
+           <input id="pHostId" placeholder="Host ID (Manager Username)" value="admin" style="margin-bottom:0">
+           <button onclick="loadTeams()" class="small ghost" style="width:auto; margin-top:0">Load</button>
+        </div>
+        
+        <select id="teamSelect" class="hidden" onchange="previewLoginLogo()">
+          <option value="">Select Your Team</option>
+        </select>
+        
+        <input id="teamPass" type="password" placeholder="Team Password" class="hidden">
+        
+        <button onclick="enterAuction()" id="btnEnterAuction" class="green">Enter Auction</button>
       </div>
-      <button onclick="enterAuction()" style="width:100%">Enter</button>
-      <div id="teamAuthMsg" style="color:#ef4444; font-size:12px; margin-top:10px;"></div>
+
+      <div id="loginMsg" style="color:#ef4444; margin-top:15px; font-size:13px;"></div>
     </div>
   </div>
 
@@ -129,19 +113,16 @@
            <strong style="color:#fbbf24">LIVE BIDDING</strong>
            <button id="btnClosePopup" class="ghost small hidden" onclick="closePopup()">Close</button>
         </div>
-        
         <div class="popup-img-zone" id="popupImgZone">
            <span id="popupDropText" style="pointer-events:none">Drag Image Here</span>
            <img id="popupImg" class="hidden">
            <input type="file" id="popupFileInput" accept="image/*" class="hidden" onchange="uploadActiveImage(this)">
         </div>
-
         <div style="text-align:center">
            <h2 id="popupName" style="margin:5px 0">Name</h2>
            <div class="badge" id="popupCat" style="display:inline-block">CAT</div>
            <h1 id="popupPrice" style="color:#fbbf24; margin:10px 0; font-size:32px;">0</h1>
         </div>
-
         <div id="adminPopupControls" class="hidden">
            <div class="flex" style="justify-content:center; margin-top:10px;">
                <button class="red" onclick="adjustPrice(-1)">-</button>
@@ -151,15 +132,15 @@
         </div>
     </div>
 
-    <div class="overlay hidden" id="soldActionOverlay">
-      <div class="modal">
+    <div class="overlay hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:4000;display:flex;align-items:center;justify-content:center;" id="soldActionOverlay">
+      <div class="login-card" style="width:400px; padding:25px;">
         <h3>Mark Player Sold</h3>
         <div id="soldActionDetails" style="margin-bottom:15px; color:#fbbf24; font-weight:bold;"></div>
         <label>Select Winning Team</label>
         <select id="soldActionTeam" style="margin-bottom:15px;"></select>
         <div class="flex" style="justify-content:flex-end">
-          <button onclick="document.getElementById('soldActionOverlay').classList.add('hidden')" class="ghost">Cancel</button>
-          <button id="btnConfirmSold" class="green">Confirm Sale</button>
+          <button onclick="document.getElementById('soldActionOverlay').classList.add('hidden')" class="ghost" style="width:auto">Cancel</button>
+          <button id="btnConfirmSold" class="green" style="width:auto">Confirm Sale</button>
         </div>
       </div>
     </div>
@@ -167,7 +148,7 @@
     <img id="hammer" src="/hammer.png">
     <audio id="hammerAudio" src="/hammer.wav"></audio>
 
-    <div class="overlay hidden" id="soldAnimationOverlay">
+    <div class="overlay hidden" id="soldAnimationOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:3000;display:flex;align-items:center;justify-content:center;">
       <div class="card" style="text-align:center; padding:40px; border:2px solid #ffd166;">
         <h1 style="color:#ffd166; font-size:40px; margin:0;">SOLD!</h1>
         <h2 id="animPlayer">Player</h2>
@@ -182,9 +163,9 @@
           <div class="small" id="roleDisplay" style="color:var(--muted)"></div>
         </div>
         <div class="flex">
-          <button id="btnExportAdmin" class="blue hidden" style="font-size:11px;" onclick="downloadCSV()">Export CSV</button>
-          <button id="btnResetSystem" class="red hidden" style="font-size:11px;">Reset System</button>
-          <button onclick="location.reload()" class="ghost" style="font-size:11px;">Logout</button>
+          <button id="btnExportAdmin" class="blue hidden" style="font-size:11px; width:auto" onclick="downloadCSV()">Export CSV</button>
+          <button id="btnResetSystem" class="red hidden" style="font-size:11px; width:auto">Reset System</button>
+          <button onclick="location.reload()" class="ghost" style="font-size:11px; width:auto">Logout</button>
         </div>
       </div>
 
@@ -196,31 +177,28 @@
                <label>Impact Purse Amount</label>
                <div class="flex">
                  <input type="number" id="inpImpactAmount" style="margin:0">
-                 <button class="small blue" onclick="saveImpactConfig()">Save Rule</button>
+                 <button class="small blue" onclick="saveImpactConfig()" style="width:auto">Save</button>
                </div>
             </div>
-
             <div style="margin-top:15px;">
               <label>Team Settings (Drag Logo to Icon)</label>
               <div class="team-config-row team-config-header">
                 <span>ID</span> <span>Name</span> <span>Pass</span> <span>Purse</span> <span>Logo</span> <span>Imp</span> <span>Del</span>
               </div>
               <div id="teamsConfigContainer"></div>
-              <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px; width:100%">+ Add Team</button>
-              <button id="btnSaveTeams" class="green small" style="margin-top:8px; width:100%">Save Teams</button>
+              <button id="btnAddTeamRow" class="ghost small" style="margin-top:8px;">+ Add Team</button>
+              <button id="btnSaveTeams" class="green small" style="margin-top:8px;">Save Teams</button>
             </div>
-            
             <div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
                <label>Add Category</label>
                <div class="flex">
                  <input id="newCatId" placeholder="ID" style="width:80px; margin:0">
                  <input id="newCatBase" placeholder="Base" type="number" style="margin:0">
                  <input id="newCatInc" placeholder="Inc" type="number" style="margin:0">
-                 <button id="btnAddCat" class="small">Add</button>
+                 <button id="btnAddCat" class="small" style="width:auto">Add</button>
                </div>
             </div>
           </div>
-
           <div class="card">
             <strong>Players</strong>
             <div id="categoriesContainer" style="margin-top:10px"></div>
@@ -232,15 +210,13 @@
             <strong>Live Scoreboard</strong>
             <div id="scoreboard" style="margin-top:10px"></div>
           </div>
-          
           <div class="card hidden" id="myTeamCard">
              <div style="display:flex; justify-content:space-between">
                 <strong>My Team Dashboard</strong>
-                <button onclick="downloadCSV()" class="ghost small">Export CSV</button>
+                <button onclick="downloadCSV()" class="ghost small" style="width:auto">Export CSV</button>
              </div>
             <div id="myTeamContent" style="margin-top:10px"></div>
           </div>
-
           <div class="card">
              <strong>Log</strong>
              <div id="log" style="height:100px; overflow-y:auto; font-size:10px; color:var(--muted)"></div>
@@ -253,117 +229,109 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    
-    // -- State --
     let CURRENT_USER = { role: null, teamId: null, hostId: null };
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, config: {} };
 
-    // -- Socket Listeners --
+    // --- UI Logic for Unified Login ---
+    function updateLoginUI() {
+        const role = document.getElementById('roleSelect').value;
+        const adminFields = document.getElementById('adminFields');
+        const participantFields = document.getElementById('participantFields');
+        const teamSelect = document.getElementById('teamSelect');
+        const teamPass = document.getElementById('teamPass');
+        const logo = document.getElementById('loginLogoPreview');
+
+        if (role === 'manager') {
+            adminFields.classList.remove('hidden');
+            participantFields.classList.add('hidden');
+            logo.classList.add('hidden');
+        } else {
+            adminFields.classList.add('hidden');
+            participantFields.classList.remove('hidden');
+            if (role === 'team') {
+                teamSelect.classList.remove('hidden');
+                teamPass.classList.remove('hidden');
+            } else {
+                teamSelect.classList.add('hidden');
+                teamPass.classList.add('hidden');
+                logo.classList.add('hidden');
+            }
+        }
+    }
+
+    function loadTeams() {
+        const host = document.getElementById('pHostId').value;
+        if(host) socket.emit('participant:connect', host);
+    }
+
+    function managerRegister() {
+        const u = document.getElementById('mUser').value;
+        const p = document.getElementById('mPass').value;
+        if(u && p) socket.emit('manager:register', { username: u, password: p });
+    }
+
+    function managerLogin() {
+        const u = document.getElementById('mUser').value;
+        const p = document.getElementById('mPass').value;
+        if(u && p) socket.emit('manager:login', { username: u, password: p });
+    }
+
+    function enterAuction() {
+        const role = document.getElementById('roleSelect').value;
+        const host = document.getElementById('pHostId').value;
+        const teamId = document.getElementById('teamSelect').value;
+        const pass = document.getElementById('teamPass').value;
+        
+        if(!host) return alert('Enter Host ID');
+        CURRENT_USER.hostId = host;
+        
+        socket.emit('team:login', { teamId, password: pass, role });
+    }
+    
+    function previewLoginLogo() {
+        const id = document.getElementById('teamSelect').value;
+        const t = STATE.teams.find(x => x.id === id);
+        const img = document.getElementById('loginLogoPreview');
+        if(t && t.logo) { img.src = t.logo; img.classList.remove('hidden'); }
+        else { img.classList.add('hidden'); }
+    }
+
+    // --- Socket Listeners ---
     socket.on('auth:portal_success', (d) => { 
-        document.getElementById('portalMsg').textContent = d.msg; 
-        document.getElementById('portalMsg').style.color = '#10b981'; 
+        document.getElementById('loginMsg').textContent = d.msg; 
+        document.getElementById('loginMsg').style.color = '#10b981'; 
     });
     
+    socket.on('auth:portal_error', (msg) => {
+        document.getElementById('loginMsg').textContent = msg;
+        document.getElementById('loginMsg').style.color = '#ef4444';
+    });
+
+    socket.on('init:teams_available', (data) => {
+        STATE.teams = data.teams;
+        const sel = document.getElementById('teamSelect');
+        sel.innerHTML = '<option value="">Select Your Team</option>';
+        data.teams.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
+        document.getElementById('loginMsg').textContent = "Teams Loaded. Select yours.";
+        document.getElementById('loginMsg').style.color = '#10b981';
+    });
+
     socket.on('manager:logged_in', (data) => {
         CURRENT_USER.hostId = data.username;
         CURRENT_USER.role = 'admin';
         STATE = data.state;
-        initApp();
-    });
-
-    socket.on('init:teams_available', (data) => {
-        CURRENT_USER.hostId = data.hostId;
-        const sel = document.getElementById('loginTeamId');
-        sel.innerHTML = '<option value="">Select Team</option>';
-        STATE.teams = data.teams;
-        data.teams.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
-        document.getElementById('portal').classList.add('hidden');
-        document.getElementById('teamAuthOverlay').classList.remove('hidden');
+        launchApp();
     });
 
     socket.on('auction:enter', (data) => {
         CURRENT_USER.role = data.role;
         CURRENT_USER.teamId = data.teamId;
         STATE = data.state;
-        initApp();
+        launchApp();
     });
 
-    socket.on('state:updated', (newState) => {
-        STATE = newState;
-        renderAll();
-    });
-
-    socket.on('admin:toast', (data) => showToast(data.msg));
-
-    // -- Req 1 & 7: Active Player Popup --
-    socket.on('popup:open', (player) => {
-        const popup = document.getElementById('activePlayerOverlay');
-        document.getElementById('popupName').textContent = player.name;
-        document.getElementById('popupCat').textContent = player.category;
-        document.getElementById('popupPrice').textContent = player.currentPrice;
-        
-        const img = document.getElementById('popupImg');
-        const dropText = document.getElementById('popupDropText');
-        const fileInp = document.getElementById('popupFileInput');
-
-        if(player.image) {
-            img.src = player.image;
-            img.classList.remove('hidden');
-            dropText.classList.add('hidden');
-        } else {
-            img.classList.add('hidden');
-            dropText.classList.remove('hidden');
-        }
-
-        if(CURRENT_USER.role === 'admin') {
-            document.getElementById('adminPopupControls').classList.remove('hidden');
-            document.getElementById('btnClosePopup').classList.remove('hidden');
-            fileInp.classList.remove('hidden'); 
-        } else {
-            document.getElementById('adminPopupControls').classList.add('hidden');
-            document.getElementById('btnClosePopup').classList.add('hidden');
-            fileInp.classList.add('hidden');
-        }
-        
-        popup.style.display = 'block';
-    });
-
-    socket.on('popup:close', () => {
-        document.getElementById('activePlayerOverlay').style.display = 'none';
-    });
-
-    // -- Req 2: Hammer & Sold Logic --
-    socket.on('player:sold', (data) => {
-        const { name, price, teamId } = data.payload;
-        const teamName = STATE.teams.find(t=>t.id===teamId)?.name || teamId;
-        
-        document.getElementById('animPlayer').textContent = name;
-        document.getElementById('animTeam').textContent = teamName;
-        document.getElementById('animPrice').textContent = price;
-        
-        const overlay = document.getElementById('soldAnimationOverlay');
-        overlay.classList.remove('hidden');
-        
-        // Hammer & Audio
-        const audio = document.getElementById('hammerAudio');
-        audio.pause(); audio.currentTime = 0; audio.play().catch(e=>{});
-        
-        const h = document.getElementById('hammer');
-        h.style.display = 'block';
-        h.classList.remove('swing');
-        void h.offsetWidth; 
-        h.classList.add('swing');
-
-        setTimeout(() => {
-            overlay.classList.add('hidden');
-            h.style.display = 'none';
-        }, 3500);
-    });
-
-    // -- Logic --
-    function initApp() {
-        document.getElementById('portal').classList.add('hidden');
-        document.getElementById('teamAuthOverlay').classList.add('hidden');
+    function launchApp() {
+        document.getElementById('loginOverlay').classList.add('hidden');
         document.getElementById('appContainer').classList.remove('hidden');
         document.getElementById('roleDisplay').textContent = CURRENT_USER.role.toUpperCase();
         
@@ -377,14 +345,49 @@
         renderAll();
     }
 
-    function renderAll() {
-        renderTeamsConfig();
-        renderCategories();
-        renderScoreboard();
-        renderMyTeam();
-    }
+    // --- Main App Logic (Same as before) ---
+    socket.on('state:updated', (newState) => { STATE = newState; renderAll(); });
+    socket.on('admin:toast', (data) => showToast(data.msg));
+    socket.on('popup:open', (player) => {
+        const popup = document.getElementById('activePlayerOverlay');
+        document.getElementById('popupName').textContent = player.name;
+        document.getElementById('popupCat').textContent = player.category;
+        document.getElementById('popupPrice').textContent = player.currentPrice;
+        const img = document.getElementById('popupImg');
+        const dropText = document.getElementById('popupDropText');
+        const fileInp = document.getElementById('popupFileInput');
+        if(player.image) { img.src = player.image; img.classList.remove('hidden'); dropText.classList.add('hidden'); } 
+        else { img.classList.add('hidden'); dropText.classList.remove('hidden'); }
 
-    // -- Req 4: Team Config with Upload --
+        if(CURRENT_USER.role === 'admin') {
+            document.getElementById('adminPopupControls').classList.remove('hidden');
+            document.getElementById('btnClosePopup').classList.remove('hidden');
+            fileInp.classList.remove('hidden'); 
+        } else {
+            document.getElementById('adminPopupControls').classList.add('hidden');
+            document.getElementById('btnClosePopup').classList.add('hidden');
+            fileInp.classList.add('hidden');
+        }
+        popup.style.display = 'block';
+    });
+    socket.on('popup:close', () => { document.getElementById('activePlayerOverlay').style.display = 'none'; });
+    socket.on('player:sold', (data) => {
+        const { name, price, teamId } = data.payload;
+        const teamName = STATE.teams.find(t=>t.id===teamId)?.name || teamId;
+        document.getElementById('animPlayer').textContent = name;
+        document.getElementById('animTeam').textContent = teamName;
+        document.getElementById('animPrice').textContent = price;
+        const overlay = document.getElementById('soldAnimationOverlay');
+        overlay.classList.remove('hidden');
+        const audio = document.getElementById('hammerAudio');
+        audio.pause(); audio.currentTime = 0; audio.play().catch(e=>{});
+        const h = document.getElementById('hammer');
+        h.style.display = 'block'; h.classList.remove('swing'); void h.offsetWidth; h.classList.add('swing');
+        setTimeout(() => { overlay.classList.add('hidden'); h.style.display = 'none'; }, 3500);
+    });
+
+    function renderAll() { renderTeamsConfig(); renderCategories(); renderScoreboard(); renderMyTeam(); }
+
     function renderTeamsConfig() {
         if(CURRENT_USER.role !== 'admin') return;
         const container = document.getElementById('teamsConfigContainer');
@@ -397,13 +400,11 @@
                 <input class="t-name" value="${t.name}" placeholder="Name">
                 <input class="t-pass" value="${t.password||''}" placeholder="Pass">
                 <input class="t-purse" type="number" value="${t.purse}" placeholder="Purse">
-                
                 <div style="position:relative; width:30px; height:30px; background:rgba(255,255,255,0.1); border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden">
                    <img src="${t.logo || ''}" style="width:100%;height:100%;object-fit:cover;display:${t.logo?'block':'none'}">
                    <span style="display:${t.logo?'none':'block'}">+</span>
                    <input type="file" onchange="uploadTeamLogo(this, '${t.id}')" style="position:absolute;inset:0;opacity:0;cursor:pointer">
                 </div>
-
                 <button class="yellow small" onclick="resetImpact('${t.id}')" title="Reset Impact">↺I</button>
                 <button class="red small" onclick="resetTeam('${t.id}')" title="Reset Team">X</button>
             `;
@@ -417,42 +418,23 @@
         STATE.categories.forEach(cat => {
             const div = document.createElement('div');
             div.style.marginBottom = '20px';
-            
             let header = `<b>${cat.id} (Base: ${cat.base})</b>`;
-            if(CURRENT_USER.role === 'admin') {
-                header += `<button class="red small" style="margin-left:10px" onclick="deleteCat('${cat.id}')">Del</button>`;
-            }
-
+            if(CURRENT_USER.role === 'admin') header += `<button class="red small" style="margin-left:10px" onclick="deleteCat('${cat.id}')">Del</button>`;
             div.innerHTML = `<div style="background:rgba(255,255,255,0.05); padding:8px; border-radius:6px; margin-bottom:5px;">${header}</div>`;
-            
-            if(CURRENT_USER.role === 'admin') {
-                div.innerHTML += `
-                  <textarea id="ta-${cat.id}" placeholder="Names..." style="margin-bottom:5px"></textarea>
-                  <button class="small ghost" onclick="saveCatList('${cat.id}', ${cat.base})">Save List</button>
-                `;
-            }
-
+            if(CURRENT_USER.role === 'admin') div.innerHTML += `<textarea id="ta-${cat.id}" placeholder="Names..." style="margin-bottom:5px"></textarea><button class="small ghost" onclick="saveCatList('${cat.id}', ${cat.base})">Save List</button>`;
             const list = document.createElement('div');
             list.className = 'players';
             const players = STATE.playersSnapshot[cat.id] || [];
-            
             const ta = div.querySelector('textarea');
             if(ta && document.activeElement !== ta) ta.value = players.map(p=>p.name).join('\n');
-
             players.forEach(p => {
                 const isSold = STATE.soldPrices[`${cat.id}:${p.name}`];
                 const item = document.createElement('div');
                 item.className = `player ${isSold?'sold':''}`;
                 let controls = '';
-                
-                if(CURRENT_USER.role === 'admin' && !isSold) {
-                    controls = `<button class="small green" onclick="activatePlayer('${cat.id}','${p.name}', ${cat.base}, '${p.image||''}')">Open</button>`;
-                } else if (isSold) {
-                    controls = '<span class="small">Sold</span>';
-                }
-                
+                if(CURRENT_USER.role === 'admin' && !isSold) controls = `<button class="small green" onclick="activatePlayer('${cat.id}','${p.name}', ${cat.base}, '${p.image||''}')">Open</button>`;
+                else if (isSold) controls = '<span class="small">Sold</span>';
                 if(CURRENT_USER.role === 'admin') controls += ` <button class="small yellow" onclick="resetPlayer('${cat.id}','${p.name}')">↺</button>`;
-
                 item.innerHTML = `<span>${p.name}</span> <div>${controls}</div>`;
                 list.appendChild(item);
             });
@@ -461,28 +443,15 @@
         });
     }
 
-    // -- Req 4: Scoreboard with Logo Preview --
     function renderScoreboard() {
         const sb = document.getElementById('scoreboard');
         sb.innerHTML = '';
         STATE.teams.forEach(t => {
             const row = document.createElement('div');
-            row.className = 'team-row';
+            row.className = 'team-row'; // Reuse style or add simple flex
+            row.style.cssText = "display:flex; justify-content:space-between; padding:8px; background:rgba(255,255,255,0.05); margin-bottom:5px; border-radius:5px; align-items:center";
             const logo = t.logo ? `<img src="${t.logo}" class="team-logo-preview">` : `<div class="team-logo-preview" style="background:#333"></div>`;
-            
-            row.innerHTML = `
-                <div class="flex">
-                    ${logo}
-                    <div>
-                        <div style="font-weight:bold">${t.name}</div>
-                        <div class="small" style="color:var(--muted)">Count: ${t.purchases ? Object.keys(t.purchases).length : 0}</div>
-                    </div>
-                </div>
-                <div style="text-align:right">
-                    <div style="font-size:16px; color:#10b981">৳ ${t.purse}</div>
-                    ${t.impactActive ? '<span class="badge" style="color:#fbbf24; font-size:10px;">IMPACT</span>' : ''}
-                </div>
-            `;
+            row.innerHTML = `<div class="flex">${logo}<div><div style="font-weight:bold">${t.name}</div><div class="small" style="color:var(--muted)">Count: ${t.purchases ? Object.keys(t.purchases).length : 0}</div></div></div><div style="text-align:right"><div style="font-size:16px; color:#10b981">৳ ${t.purse}</div>${t.impactActive ? '<span class="badge" style="color:#fbbf24; font-size:10px;">IMPACT</span>' : ''}</div>`;
             sb.appendChild(row);
         });
     }
@@ -492,210 +461,30 @@
         const t = STATE.teams.find(x => x.id === CURRENT_USER.teamId);
         const div = document.getElementById('myTeamContent');
         if(!t) return;
-        
         let logoHtml = t.logo ? `<img src="${t.logo}" class="login-logo" style="width:60px;height:60px;">` : '';
-
-        div.innerHTML = `
-           ${logoHtml}
-           <h3>Purse: ৳ ${t.purse}</h3>
-           ${t.impactActive ? '<div style="background:#fbbf24; color:black; padding:5px; margin-bottom:10px; text-align:center; font-weight:bold">IMPACT ACTIVE</div>' : ''}
-           <div style="margin-top:10px">Purchases:</div>
-        `;
-        if(t.purchases) {
-            Object.values(t.purchases).forEach(n => div.innerHTML += `<div style="padding:5px; border-bottom:1px solid #333">${n}</div>`);
-        }
+        div.innerHTML = `${logoHtml}<h3>Purse: ৳ ${t.purse}</h3>${t.impactActive ? '<div style="background:#fbbf24; color:black; padding:5px; margin-bottom:10px; text-align:center; font-weight:bold">IMPACT ACTIVE</div>' : ''}<div style="margin-top:10px">Purchases:</div>`;
+        if(t.purchases) Object.values(t.purchases).forEach(n => div.innerHTML += `<div style="padding:5px; border-bottom:1px solid #333">${n}</div>`);
     }
 
-    // -- Req 1: Upload Active Image --
-    async function uploadActiveImage(input) {
-        if(input.files[0]) {
-            const fd = new FormData(); fd.append('file', input.files[0]);
-            try {
-                const res = await fetch('/upload', { method:'POST', body: fd });
-                const d = await res.json();
-                socket.emit('admin:update_active_image', { imageUrl: d.url });
-            } catch(e) { alert('Upload error'); }
-        }
-    }
-
-    // -- Req 4: Upload Team Logo --
-    async function uploadTeamLogo(input, teamId) {
-        if(input.files[0]) {
-            const fd = new FormData(); fd.append('file', input.files[0]);
-            try {
-                const res = await fetch('/upload', { method:'POST', body: fd });
-                const d = await res.json();
-                const t = STATE.teams.find(x=>x.id===teamId);
-                if(t) t.logo = d.url;
-                socket.emit('admin:updateConfig', { teams: STATE.teams });
-            } catch(e) { alert('Upload error'); }
-        }
-    }
-
-    // -- Req 1: Inc/Dec --
-    function adjustPrice(dir) {
-        if(!STATE.currentActivePlayer) return;
-        const p = STATE.currentActivePlayer;
-        const cat = STATE.categories.find(c => c.id === p.category);
-        const inc = cat ? cat.increment : 5;
-        const newPrice = Number(p.currentPrice) + (dir * inc);
-        socket.emit('player:bid', { category: p.category, name: p.name, price: newPrice });
-    }
-
-    window.activatePlayer = (cat, name, base, img) => {
-        const bid = STATE.activeBids[`${cat}:${name}`] || base;
-        socket.emit('admin:select_player', { category: cat, name, price: bid, image: img || null });
-    }
-
-    window.openSoldModalFromPopup = () => {
-        const p = STATE.currentActivePlayer;
-        if(!p) return;
-        document.getElementById('soldActionDetails').textContent = `${p.name} @ ${p.currentPrice}`;
-        const sel = document.getElementById('soldActionTeam');
-        sel.innerHTML = '';
-        STATE.teams.forEach(t => {
-            sel.innerHTML += `<option value="${t.id}">${t.name} (৳${t.purse})</option>`;
-        });
-        document.getElementById('soldActionOverlay').classList.remove('hidden');
-        document.getElementById('btnConfirmSold').onclick = () => {
-            socket.emit('player:sold', { category: p.category, name: p.name, price: p.currentPrice, teamId: sel.value });
-            document.getElementById('soldActionOverlay').classList.add('hidden');
-        };
-    }
-
-    window.saveCatList = (id, base) => {
-        const names = document.getElementById(`ta-${id}`).value.split('\n').map(s=>s.trim()).filter(Boolean);
-        socket.emit('players:save', { category: id, players: names.map(n=>({ name: n, price: base })) });
-    }
-
-    // -- Req 6: Save Teams --
-    document.getElementById('btnSaveTeams').onclick = () => {
-        const rows = document.querySelectorAll('.team-config-row:not(.team-config-header)');
-        const teams = [];
-        rows.forEach((r, idx) => {
-            const id = r.querySelector('.t-id').value;
-            const name = r.querySelector('.t-name').value;
-            if(id && name) {
-                const old = STATE.teams.find(t=>t.id===id) || STATE.teams[idx];
-                teams.push({ 
-                    id, name, 
-                    password: r.querySelector('.t-pass').value, 
-                    purse: Number(r.querySelector('.t-purse').value),
-                    logo: old ? old.logo : null 
-                });
-            }
-        });
-        socket.emit('admin:updateConfig', { teams });
-    }
-    
-    document.getElementById('btnAddTeamRow').onclick = () => {
-        STATE.teams.push({ id:'', name:'', purse:500 });
-        renderTeamsConfig();
-    }
-
-    // -- Req 8: CSV Export --
-    window.downloadCSV = () => {
-        let rows = [["Category", "Player Name", "Base Price", "Sold Price", "Status", "Buyer Team"]];
-        STATE.categories.forEach(cat => {
-            const players = STATE.playersSnapshot[cat.id] || [];
-            players.forEach(p => {
-                const base = cat.base;
-                let soldPrice = 0, status = "Unsold", buyer = "-";
-                
-                const buyerTeam = STATE.teams.find(t => t.purchases && t.purchases[cat.id] === p.name);
-                if (buyerTeam) {
-                    status = "Sold";
-                    buyer = buyerTeam.name;
-                    const key = `${cat.id}:${p.name}`;
-                    soldPrice = STATE.soldPrices[key] || base;
-                } else {
-                    const key = `${cat.id}:${p.name}`;
-                    if (STATE.activeBids[key]) {
-                        status = "Bidding";
-                        soldPrice = STATE.activeBids[key];
-                    } else {
-                        soldPrice = base;
-                    }
-                }
-                rows.push([cat.id, p.name, base, soldPrice, status, buyer]);
-            });
-        });
-
-        let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `auction_data.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    // -- Req 3, 5: Resets & Impact --
+    // Actions
+    async function uploadActiveImage(input) { if(input.files[0]) { const fd = new FormData(); fd.append('file', input.files[0]); try { const r = await fetch('/upload', { method:'POST', body: fd }); const d = await r.json(); socket.emit('admin:update_active_image', { imageUrl: d.url }); } catch(e) {} } }
+    async function uploadTeamLogo(input, teamId) { if(input.files[0]) { const fd = new FormData(); fd.append('file', input.files[0]); try { const r = await fetch('/upload', { method:'POST', body: fd }); const d = await r.json(); const t = STATE.teams.find(x=>x.id===teamId); if(t) t.logo = d.url; socket.emit('admin:updateConfig', { teams: STATE.teams }); } catch(e) {} } }
+    function adjustPrice(dir) { if(!STATE.currentActivePlayer) return; const p = STATE.currentActivePlayer; const cat = STATE.categories.find(c => c.id === p.category); const inc = cat ? cat.increment : 5; socket.emit('player:bid', { category: p.category, name: p.name, price: Number(p.currentPrice) + (dir * inc) }); }
+    window.activatePlayer = (cat, name, base, img) => { const bid = STATE.activeBids[`${cat}:${name}`] || base; socket.emit('admin:select_player', { category: cat, name, price: bid, image: img || null }); }
+    window.openSoldModalFromPopup = () => { document.getElementById('soldActionOverlay').classList.remove('hidden'); const p = STATE.currentActivePlayer; document.getElementById('soldActionDetails').textContent = `${p.name} @ ${p.currentPrice}`; const sel = document.getElementById('soldActionTeam'); sel.innerHTML = ''; STATE.teams.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name} (৳${t.purse})</option>`); document.getElementById('btnConfirmSold').onclick = () => { socket.emit('player:sold', { category: p.category, name: p.name, price: p.currentPrice, teamId: sel.value }); document.getElementById('soldActionOverlay').classList.add('hidden'); }; }
+    window.saveCatList = (id, base) => { const names = document.getElementById(`ta-${id}`).value.split('\n').map(s=>s.trim()).filter(Boolean); socket.emit('players:save', { category: id, players: names.map(n=>({ name: n, price: base })) }); }
+    document.getElementById('btnSaveTeams').onclick = () => { const rows = document.querySelectorAll('.team-config-row:not(.team-config-header)'); const teams = []; rows.forEach((r, idx) => { const id = r.querySelector('.t-id').value; const name = r.querySelector('.t-name').value; if(id && name) { const old = STATE.teams.find(t=>t.id===id) || STATE.teams[idx]; teams.push({ id, name, password: r.querySelector('.t-pass').value, purse: Number(r.querySelector('.t-purse').value), logo: old ? old.logo : null }); } }); socket.emit('admin:updateConfig', { teams }); }
+    document.getElementById('btnAddTeamRow').onclick = () => { STATE.teams.push({ id:'', name:'', purse:500 }); renderTeamsConfig(); }
+    window.downloadCSV = () => { let rows = [["Category", "Player Name", "Base Price", "Sold Price", "Status", "Buyer Team"]]; STATE.categories.forEach(cat => { const players = STATE.playersSnapshot[cat.id] || []; players.forEach(p => { const base = cat.base; let soldPrice = 0, status = "Unsold", buyer = "-"; const buyerTeam = STATE.teams.find(t => t.purchases && t.purchases[cat.id] === p.name); if (buyerTeam) { status = "Sold"; buyer = buyerTeam.name; const key = `${cat.id}:${p.name}`; soldPrice = STATE.soldPrices[key] || base; } else { const key = `${cat.id}:${p.name}`; if (STATE.activeBids[key]) { status = "Bidding"; soldPrice = STATE.activeBids[key]; } else { soldPrice = base; } } rows.push([cat.id, p.name, base, soldPrice, status, buyer]); }); }); let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n"); const link = document.createElement("a"); link.href = encodeURI(csvContent); link.download = `auction_data.csv`; document.body.appendChild(link); link.click(); document.body.removeChild(link); };
     window.saveImpactConfig = () => socket.emit('admin:updateConfig', { impactAmount: document.getElementById('inpImpactAmount').value });
     window.resetImpact = (id) => socket.emit('admin:resetImpact', { teamId: id });
-    window.resetTeam = (id) => { if(confirm('Reset Team Funds?')) socket.emit('admin:resetTeam', { teamId: id }); };
-    window.resetPlayer = (c, n) => { if(confirm('Refund Player?')) socket.emit('admin:resetPlayer', { category: c, name: n }); };
+    window.resetTeam = (id) => { if(confirm('Reset Team?')) socket.emit('admin:resetTeam', { teamId: id }); };
+    window.resetPlayer = (c, n) => { if(confirm('Refund?')) socket.emit('admin:resetPlayer', { category: c, name: n }); };
     window.closePopup = () => socket.emit('admin:close_popup');
-    window.deleteCat = (id) => { if(confirm('Delete Cat?')) socket.emit('admin:deleteCategory', { id }); };
-    document.getElementById('btnAddCat').onclick = () => {
-         const id = document.getElementById('newCatId').value;
-         const base = document.getElementById('newCatBase').value;
-         const inc = document.getElementById('newCatInc').value;
-         if(id) {
-             STATE.categories.push({ id, base:Number(base), increment:Number(inc) });
-             socket.emit('admin:updateConfig', { categories: STATE.categories });
-         }
-    };
-    document.getElementById('btnResetSystem').onclick = () => { if(confirm('FULL SYSTEM RESET?')) socket.emit('admin:resetAll'); };
-
-    // -- Portal Utils --
-    window.switchTab = (t) => {
-        document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
-        if(t==='manager') {
-            document.querySelector('.tab:first-child').classList.add('active');
-            document.getElementById('managerForm').classList.remove('hidden');
-            document.getElementById('participantForm').classList.add('hidden');
-        } else {
-            document.querySelector('.tab:last-child').classList.add('active');
-            document.getElementById('managerForm').classList.add('hidden');
-            document.getElementById('participantForm').classList.remove('hidden');
-        }
-    };
-    window.managerLogin = () => socket.emit('manager:login', { username: document.getElementById('mUser').value, password: document.getElementById('mPass').value });
-    window.managerRegister = () => socket.emit('manager:register', { username: document.getElementById('mUser').value, password: document.getElementById('mPass').value });
-    window.connectToHost = () => socket.emit('participant:connect', document.getElementById('pHostId').value);
-    
-    window.toggleTeamPass = () => {
-        const isTeam = document.getElementById('loginRole').value === 'team';
-        document.getElementById('teamSelectGroup').classList.toggle('hidden', !isTeam);
-        document.getElementById('passGroup').classList.toggle('hidden', !isTeam);
-    };
-
-    // Req 4: Login Panel Preview
-    window.previewTeamLogo = () => {
-        const id = document.getElementById('loginTeamId').value;
-        const t = STATE.teams.find(x => x.id === id);
-        const cont = document.getElementById('loginLogoContainer');
-        const img = document.getElementById('loginTeamLogo');
-        if(t && t.logo) {
-            img.src = t.logo;
-            cont.classList.remove('hidden');
-        } else {
-            cont.classList.add('hidden');
-        }
-    };
-    
-    window.enterAuction = () => socket.emit('team:login', { teamId: document.getElementById('loginTeamId').value, password: document.getElementById('loginPass').value, role: document.getElementById('loginRole').value });
-
-    // Req 5, 6: Toast
-    function showToast(msg) {
-        const t = document.createElement('div');
-        t.className = 'toast';
-        t.textContent = msg;
-        document.getElementById('toastContainer').appendChild(t);
-        setTimeout(()=>t.remove(), 3000);
-    }
+    window.deleteCat = (id) => { if(confirm('Del?')) socket.emit('admin:deleteCategory', { id }); };
+    document.getElementById('btnAddCat').onclick = () => { const id = document.getElementById('newCatId').value; const base = document.getElementById('newCatBase').value; const inc = document.getElementById('newCatInc').value; if(id) { STATE.categories.push({ id, base:Number(base), increment:Number(inc) }); socket.emit('admin:updateConfig', { categories: STATE.categories }); } };
+    document.getElementById('btnResetSystem').onclick = () => { if(confirm('RESET ALL?')) socket.emit('admin:resetAll'); };
+    function showToast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.getElementById('toastContainer').appendChild(t); setTimeout(()=>t.remove(), 3000); }
   </script>
 </body>
 </html>
