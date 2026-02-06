@@ -191,8 +191,10 @@
         <div class="popup-img-zone" id="popupImgZone">
            <span id="popupDropText" style="pointer-events:none">Drag Image Here</span>
            <img id="popupImg" class="hidden">
-           <input type="file" id="popupFileInput" accept="image/*" class="hidden" onchange="uploadActiveImage(this)">
+           <input type="file" id="popupFileInput" accept="image/*" class="hidden" onchange="selectActiveImage(this)">
         </div>
+        
+        <button id="btnSaveImg" class="green small hidden" style="width:100%; margin-bottom:10px;" onclick="commitPlayerImage()">Save Image</button>
 
         <div style="text-align:center">
            <h2 id="popupName" style="margin:5px 0">Name</h2>
@@ -326,6 +328,7 @@
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, config: {} };
     let pendingSold = null;
     let currentPopupPlayer = null;
+    let tempPlayerImageFile = null;
 
     // -- Elements --
     const portal = document.getElementById('portal');
@@ -462,6 +465,7 @@
     socket.on('popup:close', () => {
         currentPopupPlayer = null;
         activePlayerOverlay.style.display = 'none';
+        tempPlayerImageFile = null; // Clear temp
     });
     
     socket.on('popup:update_image', ({ imageUrl }) => {
@@ -482,30 +486,51 @@
         const img = document.getElementById('popupImg');
         const dropText = document.getElementById('popupDropText');
         const fileInp = document.getElementById('popupFileInput');
+        const saveBtn = document.getElementById('btnSaveImg');
 
-        if(player.image) {
-            // FIX: Add timestamp to prevent caching
+        // Check if we have a temporary local image to show first
+        if (tempPlayerImageFile) {
+            img.src = URL.createObjectURL(tempPlayerImageFile);
+            img.classList.remove('hidden');
+            dropText.classList.add('hidden');
+            saveBtn.classList.remove('hidden'); // Show save button
+        } 
+        else if (player.image) {
             img.src = player.image + '?t=' + new Date().getTime();
             img.classList.remove('hidden');
             dropText.classList.add('hidden');
+            saveBtn.classList.add('hidden'); // Already saved
         } else {
             img.classList.add('hidden');
             dropText.classList.remove('hidden');
+            saveBtn.classList.add('hidden');
         }
 
         const adminControls = document.getElementById('adminPopupControls');
         const impactArea = document.getElementById('teamImpactArea');
         const closeBtn = document.getElementById('btnClosePopup');
+        const zone = document.getElementById('popupImgZone');
 
         if(CURRENT_USER.role === 'admin') {
             adminControls.classList.remove('hidden');
             closeBtn.classList.remove('hidden');
             fileInp.classList.remove('hidden');
             impactArea.classList.add('hidden');
+
+            // Setup Drag & Drop
+            zone.ondragover = (e) => { e.preventDefault(); zone.style.borderColor = '#7c3aed'; };
+            zone.ondragleave = () => { zone.style.borderColor = '#475569'; };
+            zone.ondrop = (e) => {
+                e.preventDefault();
+                if(e.dataTransfer.files[0]) selectActiveImage({ files: e.dataTransfer.files });
+            };
+            zone.onclick = () => fileInp.click();
+
         } else {
             adminControls.classList.add('hidden');
             closeBtn.classList.add('hidden');
             fileInp.classList.add('hidden');
+            zone.onclick = null;
             
             // --- IMPACT LOGIC ---
             if(CURRENT_USER.role === 'team') {
@@ -530,6 +555,42 @@
         socket.emit('admin:close_popup');
     }
     
+    // --- IMAGE SAVING LOGIC ---
+    
+    // 1. Select & Preview
+    function selectActiveImage(input) {
+        if(input.files && input.files[0]) {
+            tempPlayerImageFile = input.files[0];
+            updatePopupUI(); // Refreshes to show local preview and Save Button
+        }
+    }
+
+    // 2. Commit Upload
+    async function commitPlayerImage() {
+        if(!tempPlayerImageFile) return;
+        
+        const fd = new FormData(); 
+        fd.append('file', tempPlayerImageFile);
+        
+        try {
+            const res = await fetch('/upload', { method:'POST', body: fd });
+            const d = await res.json();
+            
+            if(currentPopupPlayer) {
+               socket.emit('admin:update_player_image', { 
+                   category: currentPopupPlayer.category, 
+                   name: currentPopupPlayer.name, 
+                   imageUrl: d.url 
+               });
+               tempPlayerImageFile = null; // Clear local temp
+               showToast("Image Saved!");
+               document.getElementById('btnSaveImg').classList.add('hidden');
+            }
+        } catch(e) { 
+            alert('Upload error'); 
+        }
+    }
+
     // --- IMPACT FUNCTION ---
     window.activateImpact = () => {
         if(!currentPopupPlayer) return;
@@ -541,7 +602,6 @@
             playerName: currentPopupPlayer.name 
         });
         
-        // Hide button immediately to prevent double click
         document.getElementById('teamImpactArea').classList.add('hidden');
     };
     
@@ -550,18 +610,23 @@
     socket.on('state:updated', (newState) => {
       STATE = newState;
       
-      // FIX: SYNC POPUP STATE IF IT MATCHES
+      // Sync popup state
       if(STATE.currentActivePlayer && currentPopupPlayer && STATE.currentActivePlayer.name === currentPopupPlayer.name) {
-          currentPopupPlayer = STATE.currentActivePlayer;
+          // preserve image if local editing
+          if (!tempPlayerImageFile) {
+             currentPopupPlayer = STATE.currentActivePlayer;
+          } else {
+             // Just update price, keep local image
+             currentPopupPlayer.currentPrice = STATE.currentActivePlayer.currentPrice;
+          }
       }
       
       renderAll();
       if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
-      if(currentPopupPlayer) updatePopupUI(); // Update popup
+      if(currentPopupPlayer) updatePopupUI();
     });
 
     socket.on('player:bid', (pl) => {
-      // Update Popup Price if open
       if(currentPopupPlayer && currentPopupPlayer.name === pl.name) {
           currentPopupPlayer.currentPrice = pl.price;
           updatePopupUI();
@@ -615,9 +680,9 @@
       renderMyTeam();
       log(`SOLD: ${name} to ${teamName} for ${price}`);
       
-      // Close popup automatically on sold
       activePlayerOverlay.style.display = 'none';
       currentPopupPlayer = null;
+      tempPlayerImageFile = null;
     });
 
     socket.on('admin:toast', (data) => {
@@ -968,23 +1033,6 @@
                 
                 // Emit update immediately
                 socket.emit('admin:setTeamLogo', { teamId, logoUrl: d.url });
-            } catch(e) { alert('Upload error'); }
-        }
-    }
-    
-    async function uploadActiveImage(input) {
-        if(input.files[0]) {
-            const fd = new FormData(); fd.append('file', input.files[0]);
-            try {
-                const res = await fetch('/upload', { method:'POST', body: fd });
-                const d = await res.json();
-                if(currentPopupPlayer) {
-                   socket.emit('admin:update_player_image', { 
-                       category: currentPopupPlayer.category, 
-                       name: currentPopupPlayer.name, 
-                       imageUrl: d.url 
-                   });
-                }
             } catch(e) { alert('Upload error'); }
         }
     }
