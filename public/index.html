@@ -81,19 +81,37 @@
     }
     @keyframes popUp { from{transform:translate(-50%, 100%);} to{transform:translate(-50%, 0);} }
     
-    /* --- Avatar Circle Style --- */
-    .popup-img-zone {
+    /* --- NEW: Separate Profile Circle --- */
+    .profile-circle {
         width: 140px; height: 140px;
-        border: 2px dashed #475569;
         border-radius: 50%;
-        display: flex; align-items: center; justify-content: center; text-align: center;
-        margin: 0 auto 15px auto;
-        background: rgba(0,0,0,0.2); position: relative; overflow: hidden;
-        cursor: pointer; transition: border-color 0.2s;
+        border: 3px solid var(--accent);
+        margin: 0 auto 15px auto; /* Center */
+        background: #000; /* Dark background for empty state */
+        overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
     }
-    .popup-img-zone:hover { border-color: var(--accent); }
-    .popup-img-zone img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-    .popup-img-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .profile-circle img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* --- NEW: Separate Upload Box --- */
+    .upload-box {
+        width: 100%;
+        border: 2px dashed #475569;
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+        margin-bottom: 15px;
+        background: rgba(255,255,255,0.05);
+        color: var(--muted);
+        cursor: pointer;
+        transition: border-color 0.2s;
+        font-size: 13px;
+        display: flex; flex-direction: column; align-items: center;
+    }
+    .upload-box:hover { border-color: var(--accent); color: white; }
+    .upload-box span { pointer-events: none; }
+    .upload-box input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 
     /* --- Toast --- */
     #toastContainer {position: fixed; top: 20px; right: 20px; z-index: 6000; display: flex; flex-direction: column; gap: 10px;}
@@ -206,10 +224,14 @@
            <button id="btnClosePopup" class="ghost small hidden" onclick="closePopup()">Close</button>
         </div>
         
-        <div class="popup-img-zone" id="popupImgZone" title="Double click to upload or Drag & Drop">
-           <span id="popupDropText" style="pointer-events:none; font-size:12px;">Drag / Dbl Click</span>
+        <div class="profile-circle">
            <img id="popupImg" class="hidden" onerror="handleImgError(this)">
-           <input type="file" id="popupFileInput" accept="image/*" class="hidden" onchange="selectActiveImage(this)">
+        </div>
+
+        <div id="popupUploadBox" class="upload-box hidden" title="Click or Drop">
+           <span style="font-size:24px; display:block; margin-bottom:5px;">📂</span>
+           <span>Drag & Drop or Click to Upload</span>
+           <input type="file" id="popupFileInput" accept="image/*" onchange="selectActiveImage(this)">
         </div>
         
         <div style="text-align:center">
@@ -375,13 +397,12 @@
         if (!img.dataset.retried) {
             img.dataset.retried = "true";
             setTimeout(() => {
-                const src = img.src;
+                const src = img.src.split('?')[0];
                 img.src = ""; // Clear
-                img.src = src; // Retry
+                img.src = src + '?t=' + new Date().getTime(); // Force reload
             }, 1500);
         } else {
             img.style.display = 'none'; 
-            document.getElementById('popupDropText').classList.remove('hidden');
         }
     }
 
@@ -509,7 +530,7 @@
         document.getElementById('popupPrice').textContent = player.currentPrice || 0;
         
         const img = document.getElementById('popupImg');
-        const dropText = document.getElementById('popupDropText');
+        const uploadBox = document.getElementById('popupUploadBox');
         const fileInp = document.getElementById('popupFileInput');
 
         // Reset retry counter for new images
@@ -519,39 +540,35 @@
             // Add timestamp to force browser to re-fetch even if cached 404
             img.src = player.image + '?t=' + new Date().getTime();
             img.classList.remove('hidden');
-            dropText.classList.add('hidden');
         } else {
             img.classList.add('hidden');
-            dropText.classList.remove('hidden');
         }
 
         const adminControls = document.getElementById('adminPopupControls');
         const impactArea = document.getElementById('teamImpactArea');
         const closeBtn = document.getElementById('btnClosePopup');
-        const zone = document.getElementById('popupImgZone');
 
         if(CURRENT_USER.role === 'admin') {
             adminControls.classList.remove('hidden');
             closeBtn.classList.remove('hidden');
             fileInp.classList.remove('hidden');
             impactArea.classList.add('hidden');
+            uploadBox.classList.remove('hidden'); // Show Upload Box for Admin
 
-            zone.ondragover = (e) => { e.preventDefault(); zone.style.borderColor = '#7c3aed'; };
-            zone.ondragleave = () => { zone.style.borderColor = '#475569'; };
-            zone.ondrop = (e) => {
+            // Bind Events to the Upload Box
+            uploadBox.ondragover = (e) => { e.preventDefault(); uploadBox.style.borderColor = '#7c3aed'; };
+            uploadBox.ondragleave = () => { uploadBox.style.borderColor = '#475569'; };
+            uploadBox.ondrop = (e) => {
                 e.preventDefault();
                 if(e.dataTransfer.files[0]) selectActiveImage({ files: e.dataTransfer.files });
             };
-            
-            zone.ondblclick = () => fileInp.click();
-            zone.onclick = null; 
+            uploadBox.onclick = () => fileInp.click();
 
         } else {
             adminControls.classList.add('hidden');
             closeBtn.classList.add('hidden');
             fileInp.classList.add('hidden');
-            zone.onclick = null;
-            zone.ondblclick = null;
+            uploadBox.classList.add('hidden'); // Hide Upload Box
             
             if(CURRENT_USER.role === 'team') {
                 const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
@@ -575,7 +592,7 @@
         socket.emit('admin:close_popup');
     }
     
-    // --- UPDATED: IMAGE AUTO-SAVE LOGIC ---
+    // --- IMAGE AUTO-SAVE LOGIC ---
     async function selectActiveImage(input) {
         if(input.files && input.files[0]) {
             const file = input.files[0];
@@ -752,10 +769,14 @@
 
       STATE.categories.forEach(cat => {
         const div = document.createElement('div');
+        
         let headerControls = `<span class="small">Base: ${cat.base} | Inc: ${cat.increment}</span>`;
         if (CURRENT_USER.role === 'admin') {
-           headerControls += `<button class="red small" onclick="deleteCat('${cat.id}')" style="padding:2px 6px; margin-left:4px; font-size:10px;">X</button>`;
+           headerControls += `
+             <button class="red small" onclick="deleteCat('${cat.id}')" style="padding:2px 6px; margin-left:4px; font-size:10px;">X</button>
+           `;
         }
+
         div.innerHTML = `
           <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
             <label style="color:white; font-weight:bold;">Category ${cat.id}</label>
@@ -771,9 +792,12 @@
           <div class="players" id="playersList-${cat.id}"></div>
         `;
         categoriesContainer.appendChild(div);
+
         if(CURRENT_USER.role === 'admin') {
           const ta = div.querySelector('textarea');
-          ta.addEventListener('input', () => { });
+          ta.addEventListener('input', () => {
+             // Local preview logic if desired, or just wait for save
+          });
         }
       });
     }
@@ -812,7 +836,9 @@
         if(isSold) {
           actionHTML = `<div class="small" style="color:#7c3aed">Sold: ${soldTo}</div>`;
         } else if(CURRENT_USER.role === 'admin') {
-          actionHTML = `<button class="btn-bid small" onclick="activatePlayer('${catId}', '${p.name}')">Select</button>`;
+          actionHTML = `
+            <button class="btn-bid small" onclick="activatePlayer('${catId}', '${p.name}', ${displayPrice}, '${p.image||''}')">Select</button>
+          `;
         }
 
         if(CURRENT_USER.role === 'admin') {
@@ -829,6 +855,7 @@
             <div class="actions">${actionHTML}</div>
           </div>
         `;
+
         container.appendChild(el);
       });
     }
@@ -839,7 +866,9 @@
         const div = document.createElement('div');
         div.className = 'team-row';
         const count = t.purchases ? Object.keys(t.purchases).length : 0;
+        
         const logo = t.logo ? `<img src="${t.logo}" class="team-logo">` : `<div class="team-logo" style="background:#333; display:inline-block"></div>`;
+
         div.innerHTML = `
            <div style="display:flex; align-items:center;">
              ${logo}
@@ -862,6 +891,7 @@
       const div = document.getElementById('myTeamContent');
       let html = `<div style="font-size:24px; font-weight:bold; margin-bottom:10px">Purse: ৳ ${t.purse}</div>`;
       if(t.impactActive) html += '<div style="background:#fbbf24; color:black; padding:5px; margin-bottom:10px; text-align:center; font-weight:bold; border-radius:4px;">⚡ IMPACT CARD ACTIVE</div>';
+      
       html += '<strong>My Purchases:</strong>';
       if(t.purchases) {
         Object.entries(t.purchases).forEach(([cat, name]) => {
@@ -879,6 +909,7 @@
       setTimeout(() => t.remove(), 4000);
     }
 
+    // -- CSV EXPORT --
     function downloadCSV() {
         let rows = [["Category", "Player Name", "Base Price", "Sold Price", "Status", "Buyer Team"]];
         STATE.categories.forEach(cat => {
@@ -886,6 +917,7 @@
             players.forEach(p => {
                 const base = cat.base;
                 let soldPrice = 0, status = "Unsold", buyer = "-";
+                
                 const buyerTeam = STATE.teams.find(t => t.purchases && t.purchases[cat.id] === p.name);
                 if (buyerTeam) {
                     status = "Sold";
@@ -904,6 +936,7 @@
                 rows.push([cat.id, p.name, base, soldPrice, status, buyer]);
             });
         });
+
         let csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
@@ -917,6 +950,7 @@
     btnExportAdmin.addEventListener('click', downloadCSV);
     btnExportTeam.addEventListener('click', downloadCSV);
 
+    // -- Admin Actions (Sold/Config) --
     function openSoldConfirmation(cat, name, price) {
       pendingSold = { category: cat, name, price: Number(price) };
       const modal = document.getElementById('soldActionOverlay');
@@ -933,13 +967,11 @@
       modal.classList.remove('hidden');
     }
     
-    window.activatePlayer = (cat, name) => {
-        const players = STATE.playersSnapshot[cat] || [];
-        const p = players.find(x => x.name === name);
-        const image = p ? p.image : null;
+    // -- Action Helpers for Admin --
+    window.activatePlayer = (cat, name, price, img) => {
         const key = `${cat}:${name}`;
-        const currentPrice = STATE.activeBids[key] || (p ? p.price : 0) || STATE.categories.find(c=>c.id===cat).base;
-        socket.emit('admin:select_player', { category: cat, name: name, price: currentPrice, image: image });
+        const currentPrice = STATE.activeBids[key] || price;
+        socket.emit('admin:select_player', { category: cat, name, price: currentPrice, image: img });
     };
     
     window.adjustPrice = (dir) => {
@@ -986,8 +1018,10 @@
          const name = row.querySelector('.t-name').value.trim();
          const pass = row.querySelector('.t-pass').value.trim();
          const purse = row.querySelector('.t-purse').value;
+         
          const oldTeam = STATE.teams.find(t=>t.id===id) || STATE.teams[idx];
          const logo = oldTeam ? oldTeam.logo : null;
+
          if(!id || !name) valid = false;
          newTeams.push({ id, name, password: pass, purse: Number(purse), logo });
       });
@@ -996,14 +1030,17 @@
       showToast('Teams Saved!');
     };
     
+    // Helper to upload Logo
     async function uploadTeamLogo(input, teamId) {
         if(input.files[0]) {
             const fd = new FormData(); fd.append('file', input.files[0]);
             try {
                 const res = await fetch('/upload', { method:'POST', body: fd });
                 const d = await res.json();
+                
                 const t = STATE.teams.find(x=>x.id===teamId);
                 if(t) t.logo = d.url;
+                
                 socket.emit('admin:setTeamLogo', { teamId, logoUrl: d.url });
             } catch(e) { alert('Upload error'); }
         }
