@@ -81,13 +81,13 @@
     }
     @keyframes popUp { from{transform:translate(-50%, 100%);} to{transform:translate(-50%, 0);} }
     
-    /* --- UPDATED: Avatar Circle Style --- */
+    /* --- Avatar Circle Style --- */
     .popup-img-zone {
-        width: 140px; height: 140px; /* Circle Size */
+        width: 140px; height: 140px;
         border: 2px dashed #475569;
-        border-radius: 50%; /* Make it a circle */
+        border-radius: 50%;
         display: flex; align-items: center; justify-content: center; text-align: center;
-        margin: 0 auto 15px auto; /* Center horizontally */
+        margin: 0 auto 15px auto;
         background: rgba(0,0,0,0.2); position: relative; overflow: hidden;
         cursor: pointer; transition: border-color 0.2s;
     }
@@ -212,8 +212,6 @@
            <input type="file" id="popupFileInput" accept="image/*" class="hidden" onchange="selectActiveImage(this)">
         </div>
         
-        <button id="btnSaveImg" class="green small hidden" style="width:100%; margin-bottom:10px;" onclick="commitPlayerImage()">Save Image</button>
-
         <div style="text-align:center">
            <h2 id="popupName" style="margin:5px 0">Name</h2>
            <div class="badge" id="popupCat" style="display:inline-block">CAT</div>
@@ -346,7 +344,6 @@
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, config: {} };
     let pendingSold = null;
     let currentPopupPlayer = null;
-    let tempPlayerImageFile = null;
 
     // -- Elements --
     const portal = document.getElementById('portal');
@@ -494,7 +491,6 @@
     socket.on('popup:close', () => {
         currentPopupPlayer = null;
         activePlayerOverlay.style.display = 'none';
-        tempPlayerImageFile = null; 
     });
     
     socket.on('popup:update_image', ({ imageUrl }) => {
@@ -515,29 +511,18 @@
         const img = document.getElementById('popupImg');
         const dropText = document.getElementById('popupDropText');
         const fileInp = document.getElementById('popupFileInput');
-        const saveBtn = document.getElementById('btnSaveImg');
 
         // Reset retry counter for new images
         img.dataset.retried = "";
 
-        // 1. Prioritize Local Temp Preview
-        if (tempPlayerImageFile) {
-            img.src = URL.createObjectURL(tempPlayerImageFile);
-            img.classList.remove('hidden');
-            dropText.classList.add('hidden');
-            saveBtn.classList.remove('hidden'); 
-        } 
-        // 2. Then Server Image
-        else if (player.image) {
+        if (player.image) {
             // Add timestamp to force browser to re-fetch even if cached 404
             img.src = player.image + '?t=' + new Date().getTime();
             img.classList.remove('hidden');
             dropText.classList.add('hidden');
-            saveBtn.classList.add('hidden'); 
         } else {
             img.classList.add('hidden');
             dropText.classList.remove('hidden');
-            saveBtn.classList.add('hidden');
         }
 
         const adminControls = document.getElementById('adminPopupControls');
@@ -558,7 +543,6 @@
                 if(e.dataTransfer.files[0]) selectActiveImage({ files: e.dataTransfer.files });
             };
             
-            // UPDATED: Double click to upload, remove single click trigger
             zone.ondblclick = () => fileInp.click();
             zone.onclick = null; 
 
@@ -591,36 +575,28 @@
         socket.emit('admin:close_popup');
     }
     
-    // --- IMAGE SAVING LOGIC ---
-    function selectActiveImage(input) {
+    // --- UPDATED: IMAGE AUTO-SAVE LOGIC ---
+    async function selectActiveImage(input) {
         if(input.files && input.files[0]) {
-            tempPlayerImageFile = input.files[0];
-            updatePopupUI();
-        }
-    }
-
-    async function commitPlayerImage() {
-        if(!tempPlayerImageFile) return;
-        
-        const fd = new FormData(); 
-        fd.append('file', tempPlayerImageFile);
-        
-        try {
-            const res = await fetch('/upload', { method:'POST', body: fd });
-            const d = await res.json();
+            const file = input.files[0];
+            const fd = new FormData(); 
+            fd.append('file', file);
             
-            if(currentPopupPlayer) {
-               socket.emit('admin:update_player_image', { 
-                   category: currentPopupPlayer.category, 
-                   name: currentPopupPlayer.name, 
-                   imageUrl: d.url 
-               });
-               tempPlayerImageFile = null; 
-               showToast("Image Saved!");
-               document.getElementById('btnSaveImg').classList.add('hidden');
+            try {
+                const res = await fetch('/upload', { method:'POST', body: fd });
+                const d = await res.json();
+                
+                if(currentPopupPlayer) {
+                   socket.emit('admin:update_player_image', { 
+                       category: currentPopupPlayer.category, 
+                       name: currentPopupPlayer.name, 
+                       imageUrl: d.url 
+                   });
+                   showToast("Image Uploaded & Saved!");
+                }
+            } catch(e) { 
+                alert('Upload error'); 
             }
-        } catch(e) { 
-            alert('Upload error'); 
         }
     }
 
@@ -640,11 +616,7 @@
     socket.on('state:updated', (newState) => {
       STATE = newState;
       if(STATE.currentActivePlayer && currentPopupPlayer && STATE.currentActivePlayer.name === currentPopupPlayer.name) {
-          if (!tempPlayerImageFile) {
-             currentPopupPlayer = STATE.currentActivePlayer;
-          } else {
-             currentPopupPlayer.currentPrice = STATE.currentActivePlayer.currentPrice;
-          }
+          currentPopupPlayer = STATE.currentActivePlayer;
       }
       renderAll();
       if(CURRENT_USER.role === 'admin') renderTeamConfigForm();
@@ -706,7 +678,6 @@
       
       activePlayerOverlay.style.display = 'none';
       currentPopupPlayer = null;
-      tempPlayerImageFile = null;
     });
 
     socket.on('admin:toast', (data) => {
