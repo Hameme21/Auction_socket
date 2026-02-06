@@ -484,7 +484,8 @@
         const fileInp = document.getElementById('popupFileInput');
 
         if(player.image) {
-            img.src = player.image;
+            // FIX: Add timestamp to prevent caching
+            img.src = player.image + '?t=' + new Date().getTime();
             img.classList.remove('hidden');
             dropText.classList.add('hidden');
         } else {
