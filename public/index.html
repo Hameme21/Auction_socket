@@ -496,10 +496,10 @@
             saveBtn.classList.remove('hidden'); // Show save button
         } 
         else if (player.image) {
-            img.src = player.image + '?t=' + new Date().getTime();
+            img.src = player.image + '?t=' + new Date().getTime(); // Anti-cache
             img.classList.remove('hidden');
             dropText.classList.add('hidden');
-            saveBtn.classList.add('hidden'); // Already saved
+            saveBtn.classList.add('hidden'); 
         } else {
             img.classList.add('hidden');
             dropText.classList.remove('hidden');
@@ -557,7 +557,6 @@
     
     // --- IMAGE SAVING LOGIC ---
     
-    // 1. Select & Preview
     function selectActiveImage(input) {
         if(input.files && input.files[0]) {
             tempPlayerImageFile = input.files[0];
@@ -565,7 +564,6 @@
         }
     }
 
-    // 2. Commit Upload
     async function commitPlayerImage() {
         if(!tempPlayerImageFile) return;
         
@@ -612,11 +610,10 @@
       
       // Sync popup state
       if(STATE.currentActivePlayer && currentPopupPlayer && STATE.currentActivePlayer.name === currentPopupPlayer.name) {
-          // preserve image if local editing
           if (!tempPlayerImageFile) {
              currentPopupPlayer = STATE.currentActivePlayer;
           } else {
-             // Just update price, keep local image
+             // Keep local image if editing
              currentPopupPlayer.currentPrice = STATE.currentActivePlayer.currentPrice;
           }
       }
@@ -824,8 +821,9 @@
         if(isSold) {
           actionHTML = `<div class="small" style="color:#7c3aed">Sold: ${soldTo}</div>`;
         } else if(CURRENT_USER.role === 'admin') {
+          // MODIFIED: Pass simple args, look up data in STATE inside activatePlayer
           actionHTML = `
-            <button class="btn-bid small" onclick="activatePlayer('${catId}', '${p.name}', ${displayPrice}, '${p.image||''}')">Select</button>
+            <button class="btn-bid small" onclick="activatePlayer('${catId}', '${p.name}')">Select</button>
           `;
         }
 
@@ -956,10 +954,18 @@
     }
     
     // -- Action Helpers for Admin --
-    window.activatePlayer = (cat, name, price, img) => {
+    
+    // NEW: Look up image from STATE to ensure it's fresh
+    window.activatePlayer = (cat, name) => {
+        const players = STATE.playersSnapshot[cat] || [];
+        const p = players.find(x => x.name === name);
+        const image = p ? p.image : null;
+        
         const key = `${cat}:${name}`;
-        const currentPrice = STATE.activeBids[key] || price;
-        socket.emit('admin:select_player', { category: cat, name, price: currentPrice, image: img });
+        // Prioritize active bid, then player base price, then category default
+        const currentPrice = STATE.activeBids[key] || (p ? p.price : 0) || STATE.categories.find(c=>c.id===cat).base;
+        
+        socket.emit('admin:select_player', { category: cat, name: name, price: currentPrice, image: image });
     };
     
     window.adjustPrice = (dir) => {
@@ -1007,7 +1013,6 @@
          const pass = row.querySelector('.t-pass').value.trim();
          const purse = row.querySelector('.t-purse').value;
          
-         // Preserve Logo from existing state if not uploading new
          const oldTeam = STATE.teams.find(t=>t.id===id) || STATE.teams[idx];
          const logo = oldTeam ? oldTeam.logo : null;
 
@@ -1027,11 +1032,9 @@
                 const res = await fetch('/upload', { method:'POST', body: fd });
                 const d = await res.json();
                 
-                // Find and update the specific team in STATE
                 const t = STATE.teams.find(x=>x.id===teamId);
                 if(t) t.logo = d.url;
                 
-                // Emit update immediately
                 socket.emit('admin:setTeamLogo', { teamId, logoUrl: d.url });
             } catch(e) { alert('Upload error'); }
         }
