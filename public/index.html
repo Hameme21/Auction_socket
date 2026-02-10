@@ -85,6 +85,7 @@
 
     /* --- Sold Animation Overlay --- */
     #soldAnimationOverlay { position: fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; display:flex; justify-content:center; align-items:center; }
+    
     /* --- Team Logo Styles --- */
     .team-logo { 
       width: 30px; height: 30px; 
@@ -289,7 +290,7 @@
     let CURRENT_USER = { role: null, teamId: null, hostId: null };
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {} };
     let pendingSold = null;
-    let currentPopupPlayer = null; // Store who is currently open in popup
+    let currentPopupPlayer = null; // Store who is currently open
 
     // -- Elements --
     const portal = document.getElementById('portal');
@@ -501,62 +502,93 @@
 
     socket.on('popup:update_image', (data) => {
         const img = document.getElementById('popupPlayerImg');
-        // Add timestamp to force refresh cache if needed, or just replace URL
         img.src = data.imageUrl; 
     });
 
     function closePlayerPopup() {
         if(CURRENT_USER.role === 'admin') {
-            socket.emit('admin:close_popup'); // Close for everyone
+            socket.emit('admin:close_popup'); 
         } else {
-            document.getElementById('playerDetailPopup').classList.add('hidden'); // Close locally
+            document.getElementById('playerDetailPopup').classList.add('hidden'); 
         }
     }
 
     function openPlayerDetails(cat, name, currentImage) {
         const playerObj = { category: cat, name: name, image: currentImage };
-        // If Admin, open for everyone (projector mode). If User, open locally.
         if(CURRENT_USER.role === 'admin') {
             socket.emit('admin:select_player', playerObj);
         } else {
-            // Mock the event for local view (or you can ask server to open it)
-            // Here we just trigger the local open listener for smoother UX
+            // Mock the event for local view 
             socket.emit('admin:select_player', playerObj);
         }
     }
 
-    async function uploadPlayerImage() {
+    // --- NEW: Handle Image as Base64 (Works on Render) ---
+    function uploadPlayerImage() {
         const input = document.getElementById('playerImgInput');
         if (!input.files.length) return alert("Please select a file first.");
 
-        const formData = new FormData();
-        formData.append("image", input.files[0]);
-
-        try {
-            // Upload to the Server Endpoint
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) throw new Error("Upload failed");
-
-            const data = await response.json(); // Server returns { url: ... }
-            
-            // Tell Server to update the state and broadcast the new image
-            socket.emit('admin:update_player_image', {
-                category: currentPopupPlayer.category,
-                name: currentPopupPlayer.name,
-                imageUrl: data.url
-            });
-            
-            showToast("Image Uploaded Successfully!");
-            input.value = ""; // Reset input
-
-        } catch (error) {
-            console.error(error);
-            alert("Error uploading image");
+        const file = input.files[0];
+        
+        // 1. Simple Size Check 
+        if(file.size > 2 * 1024 * 1024) {
+            return alert("File is too big! Please verify it is under 2MB.");
         }
+
+        // 2. Button Loading State
+        const btn = document.querySelector('#popupAdminControls button');
+        const originalText = btn.textContent;
+        btn.textContent = "Processing...";
+        btn.disabled = true;
+
+        // 3. Convert & Resize Image
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Resize to max 300x300 (Perfect for profile pics)
+                const MAX_SIZE = 300;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                } else {
+                    if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Get the Base64 String
+                const base64String = canvas.toDataURL('image/jpeg', 0.8);
+
+                // 4. Send directly to Socket (Bypassing /upload endpoint)
+                socket.emit('admin:update_player_image', {
+                    category: currentPopupPlayer.category,
+                    name: currentPopupPlayer.name,
+                    imageUrl: base64String
+                });
+
+                showToast("Image Updated!");
+                input.value = ""; 
+                btn.textContent = originalText;
+                btn.disabled = false;
+            };
+        };
+        
+        reader.onerror = () => {
+            alert("Error reading file");
+            btn.textContent = originalText;
+            btn.disabled = false;
+        };
     }
 
 
