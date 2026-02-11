@@ -290,7 +290,7 @@
     let CURRENT_USER = { role: null, teamId: null, hostId: null };
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {} };
     let pendingSold = null;
-    let currentPopupPlayer = null; // Store who is currently open in popup
+    let currentPopupPlayer = null; 
 
     // -- Elements --
     const portal = document.getElementById('portal');
@@ -514,7 +514,7 @@
     }
 
     function openPlayerDetails(cat, name) {
-        // FIX: Look up the image directly from the STATE memory
+        // Look up the image directly from the STATE memory
         let currentImage = null;
         if (STATE.playersSnapshot && STATE.playersSnapshot[cat]) {
             const player = STATE.playersSnapshot[cat].find(p => p.name === name);
@@ -525,11 +525,10 @@
 
         const playerObj = { category: cat, name: name, image: currentImage };
         
-        // If Admin, open for everyone (projector mode). If User, open locally.
         if(CURRENT_USER.role === 'admin') {
             socket.emit('admin:select_player', playerObj);
         } else {
-            // Mock the event for local view (or you can ask server to open it)
+            // Simulate for local if needed
             socket.emit('admin:select_player', playerObj);
         }
     }
@@ -542,8 +541,8 @@
         const file = input.files[0];
         
         // 1. Simple Size Check 
-        if(file.size > 2 * 1024 * 1024) {
-            return alert("File is too big! Please verify it is under 2MB.");
+        if(file.size > 5 * 1024 * 1024) {
+            return alert("File is too big! Please use an image under 5MB.");
         }
 
         // 2. Button Loading State
@@ -740,7 +739,7 @@
            actionHTML += `<button class="yellow small" style="margin-left:4px" title="Reset Player" onclick="resetPlayer('${catId}', '${p.name}')">↺</button>`;
         }
 
-        // FIX: Removed the image string from here. We only pass ID and Name.
+        // Updated onclick to just pass ID and Name (Prevents image code breaking the HTML)
         const clickAction = `onclick="openPlayerDetails('${catId}', '${p.name}')"`;
 
         el.innerHTML = `
