@@ -48,9 +48,30 @@
     .badge{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:8px;font-weight:700}
     .name{font-weight:600}
     .price{font-size:18px;font-weight:700;}
+
+    /* --- IMAGES & DROP ZONE --- */
+    .player-img-preview { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; cursor: pointer; border: 1px solid var(--accent); }
+    
+    .drop-zone {
+        width: 40px; height: 40px; border: 2px dashed var(--muted); border-radius: 4px;
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        transition: 0.2s; cursor: pointer;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: rgba(124, 58, 237, 0.2); }
+    .drop-text { font-size: 8px; color: var(--muted); line-height: 1; pointer-events: none; }
+
+    /* --- IMAGE POP BOX (MODAL) --- */
+    #imagePopBox {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 7000;
+        display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px);
+    }
+    #imagePopBox img {
+        max-width: 90%; max-height: 80%; border-radius: 8px;
+        box-shadow: 0 0 30px rgba(124, 58, 237, 0.5); border: 2px solid var(--accent);
+    }
     
     /* --- Team Settings Grid --- */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
     .team-config-header { font-weight: bold; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 
     /* --- Scoreboard --- */
@@ -85,34 +106,14 @@
 
     /* --- Sold Animation Overlay --- */
     #soldAnimationOverlay { position: fixed; inset:0; background:rgba(0,0,0,0.8); z-index:3000; display:flex; justify-content:center; align-items:center; }
-    
-    /* --- Team Logo Styles --- */
-    .team-logo { 
-      width: 30px; height: 30px; 
-      object-fit: cover; border-radius: 50%; 
-      margin-right: 10px; 
-      border: 1px solid rgba(255,255,255,0.3); background: #000; vertical-align: middle;
-    }
-    
-    /* Login Panel Large Logo */
-    .team-logo-large { 
-      width: 100px; height: 100px; 
-      object-fit: cover; border-radius: 50%; 
-      margin: 0 auto 15px auto; 
-      display: block; 
-      border: 3px solid var(--accent); 
-      box-shadow: 0 0 20px rgba(124, 58, 237, 0.4);
-      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    @keyframes popIn { from{transform:scale(0);opacity:0;} to{transform:scale(1);opacity:1;} }
-
-    /* Update Grid for Team Config to make space for Upload Button */
-    .team-config-row { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; gap: 8px; margin-bottom: 8px; align-items: center; }
-    .team-config-header { display: grid; grid-template-columns: 0.5fr 1.5fr 1fr 0.8fr 50px auto auto; }
     @media (max-width:900px){.grid{grid-template-columns:1fr;}}
   </style>
 </head>
 <body>
+
+  <div id="imagePopBox" onclick="this.style.display='none'">
+      <img id="popBoxImg" src="" alt="Preview">
+  </div>
 
   <div id="portal">
     <h1 style="margin-bottom: 20px; color:white;">Players Auction System</h1>
@@ -149,11 +150,10 @@
         </select>
       </div>
 
-     <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
-       <div id="loginTeamLogoPreview" style="min-height:10px;"></div>
-       <label>Select Your Team</label>
-       <select id="loginTeamId" onchange="previewTeamLogo()"></select> 
-    </div>
+      <div id="teamSelectGroup" class="hidden" style="margin-bottom:15px;">
+        <label>Select Your Team</label>
+        <select id="loginTeamId"></select> 
+      </div>
 
       <div id="passGroup" class="hidden" style="margin-bottom:15px;">
         <label>Team Password</label>
@@ -177,27 +177,6 @@
         <div class="flex" style="justify-content:flex-end">
           <button id="btnCancelSold" class="ghost">Cancel</button>
           <button id="btnConfirmSold" class="green">Confirm Sale</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="overlay hidden" id="playerDetailPopup">
-      <div class="modal" style="text-align:center; width: 350px;">
-        <div style="display:flex; justify-content:flex-end;">
-          <button onclick="closePlayerPopup()" class="ghost small">X</button>
-        </div>
-        
-        <div style="margin: 10px auto; width: 150px; height: 150px; border-radius: 50%; overflow: hidden; border: 4px solid var(--accent); background: #000; position: relative;">
-          <img id="popupPlayerImg" src="" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://via.placeholder.com/150?text=No+Image'">
-        </div>
-    
-        <h2 id="popupPlayerName" style="margin:5px 0">Player Name</h2>
-        <div class="badge" id="popupPlayerCat" style="display:inline-block; margin-bottom:15px">CAT</div>
-        
-        <div id="popupAdminControls" class="hidden" style="margin-top:15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top:15px;">
-          <label>Update Player Image</label>
-          <input type="file" id="playerImgInput" accept="image/*">
-          <button onclick="uploadPlayerImage()" class="blue small" style="width:100%; margin-top:5px;">Upload Image</button>
         </div>
       </div>
     </div>
@@ -290,7 +269,6 @@
     let CURRENT_USER = { role: null, teamId: null, hostId: null };
     let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {} };
     let pendingSold = null;
-    let currentPopupPlayer = null; 
 
     // -- Elements --
     const portal = document.getElementById('portal');
@@ -309,12 +287,52 @@
     const btnExportAdmin = document.getElementById('btnExportAdmin');
     const btnExportTeam = document.getElementById('btnExportTeam');
 
-    // Hammer Reset Listener
     if(hammer) {
       hammer.addEventListener('animationend', () => {
         hammer.classList.remove('swing');
         hammer.style.display = 'none';
       });
+    }
+
+    // --- DRAG & DROP & IMAGE LOGIC ---
+    
+    function openPopBox(url) {
+        const box = document.getElementById('imagePopBox');
+        const img = document.getElementById('popBoxImg');
+        img.src = url;
+        box.style.display = 'flex';
+    }
+
+    function handleDrop(e, category, playerName) {
+        e.preventDefault();
+        const dropZone = e.currentTarget;
+        dropZone.classList.remove('dragover');
+
+        const file = e.dataTransfer.files[0];
+        if (!file || !file.type.startsWith('image/')) {
+            showToast("Please drop a valid image file.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        dropZone.innerHTML = '<span class="drop-text">...</span>';
+
+        fetch('/upload', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                socket.emit('admin:update_player_image', { 
+                    category, 
+                    name: playerName, 
+                    imageUrl: data.url 
+                });
+                showToast("Image Uploaded!");
+            })
+            .catch(err => {
+                console.error(err);
+                dropZone.innerHTML = '<span class="drop-text">Err</span>';
+            });
     }
 
     // --- PORTAL LOGIC ---
@@ -358,7 +376,6 @@
         el.textContent = data.msg;
     });
 
-    // Manager Login Success
     socket.on('manager:logged_in', (data) => {
         CURRENT_USER.hostId = data.username;
         CURRENT_USER.role = 'admin';
@@ -369,13 +386,11 @@
         renderAll();
     });
 
-    // Participant Connect Success (Go to Step 2)
     socket.on('init:teams_available', (data) => {
         CURRENT_USER.hostId = data.hostId;
         const sel = document.getElementById('loginTeamId');
         sel.innerHTML = '<option value="">Select Team</option>';
         data.teams.forEach(t => sel.innerHTML += `<option value="${t.id}">${t.name}</option>`);
-        
         portal.classList.add('hidden');
         teamAuthOverlay.classList.remove('hidden');
     });
@@ -392,7 +407,6 @@
         const role = document.getElementById('loginRole').value;
         const teamId = document.getElementById('loginTeamId').value;
         const pass = document.getElementById('loginPass').value;
-        
         socket.emit('team:login', { hostId: CURRENT_USER.hostId, teamId, password: pass, role });
     }
 
@@ -451,8 +465,7 @@
       
       const audio = document.getElementById('hammerAudio');
       if(audio) { 
-        audio.pause(); 
-        audio.currentTime = 0; 
+        audio.pause(); audio.currentTime = 0; 
         audio.play().catch(e=>console.log(e)); 
       }
 
@@ -472,135 +485,6 @@
     });
 
     socket.on('players:load', (d) => renderCategoryPlayers(d.category, d.players));
-
-    // --- POPUP HANDLERS ---
-    socket.on('popup:open', (player) => {
-        currentPopupPlayer = player;
-        const overlay = document.getElementById('playerDetailPopup');
-        const img = document.getElementById('popupPlayerImg');
-        
-        document.getElementById('popupPlayerName').textContent = player.name;
-        document.getElementById('popupPlayerCat').textContent = player.category;
-        
-        // Set Image (or default)
-        img.src = player.image ? player.image : 'https://via.placeholder.com/150?text=No+Image';
-
-        // Show Upload Controls ONLY for Admin
-        if(CURRENT_USER.role === 'admin') {
-            document.getElementById('popupAdminControls').classList.remove('hidden');
-        } else {
-            document.getElementById('popupAdminControls').classList.add('hidden');
-        }
-
-        overlay.classList.remove('hidden');
-    });
-
-    socket.on('popup:close', () => {
-        document.getElementById('playerDetailPopup').classList.add('hidden');
-        currentPopupPlayer = null;
-    });
-
-    socket.on('popup:update_image', (data) => {
-        const img = document.getElementById('popupPlayerImg');
-        img.src = data.imageUrl; 
-    });
-
-    function closePlayerPopup() {
-        if(CURRENT_USER.role === 'admin') {
-            socket.emit('admin:close_popup'); 
-        } else {
-            document.getElementById('playerDetailPopup').classList.add('hidden'); 
-        }
-    }
-
-    function openPlayerDetails(cat, name) {
-        // Look up the image directly from the STATE memory
-        let currentImage = null;
-        if (STATE.playersSnapshot && STATE.playersSnapshot[cat]) {
-            const player = STATE.playersSnapshot[cat].find(p => p.name === name);
-            if (player) {
-                currentImage = player.image;
-            }
-        }
-
-        const playerObj = { category: cat, name: name, image: currentImage };
-        
-        if(CURRENT_USER.role === 'admin') {
-            socket.emit('admin:select_player', playerObj);
-        } else {
-            // Simulate for local if needed
-            socket.emit('admin:select_player', playerObj);
-        }
-    }
-
-    // --- NEW: Handle Image as Base64 (Works on Render) ---
-    function uploadPlayerImage() {
-        const input = document.getElementById('playerImgInput');
-        if (!input.files.length) return alert("Please select a file first.");
-
-        const file = input.files[0];
-        
-        // 1. Simple Size Check 
-        if(file.size > 5 * 1024 * 1024) {
-            return alert("File is too big! Please use an image under 5MB.");
-        }
-
-        // 2. Button Loading State
-        const btn = document.querySelector('#popupAdminControls button');
-        const originalText = btn.textContent;
-        btn.textContent = "Processing...";
-        btn.disabled = true;
-
-        // 3. Convert & Resize Image
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                // Resize to max 300x300 (Perfect for profile pics)
-                const MAX_SIZE = 300;
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                } else {
-                    if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                }
-                
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                // Get the Base64 String
-                const base64String = canvas.toDataURL('image/jpeg', 0.8);
-
-                // 4. Send directly to Socket (Bypassing /upload endpoint)
-                socket.emit('admin:update_player_image', {
-                    category: currentPopupPlayer.category,
-                    name: currentPopupPlayer.name,
-                    imageUrl: base64String
-                });
-
-                showToast("Image Updated!");
-                input.value = ""; 
-                btn.textContent = originalText;
-                btn.disabled = false;
-            };
-        };
-        
-        reader.onerror = () => {
-            alert("Error reading file");
-            btn.textContent = originalText;
-            btn.disabled = false;
-        };
-    }
-
 
     // -- Rendering --
 
@@ -683,13 +567,6 @@
           <div class="players" id="playersList-${cat.id}"></div>
         `;
         categoriesContainer.appendChild(div);
-
-        if(CURRENT_USER.role === 'admin') {
-          const ta = div.querySelector('textarea');
-          ta.addEventListener('input', () => {
-             // Local preview logic if desired, or just wait for save
-          });
-        }
       });
     }
 
@@ -723,6 +600,20 @@
         el.dataset.price = displayPrice;
         el.className = `player ${isSold ? 'sold' : ''} ${activeBid && !isSold ? 'has-bid' : ''}`;
         
+        // --- IMAGE LOGIC START ---
+        let imgHTML = '';
+        if (p.image) {
+            imgHTML = `<img src="${p.image}" class="player-img-preview" onclick="openPopBox('${p.image}')">`;
+        } else if (CURRENT_USER.role === 'admin') {
+            imgHTML = `<div class="drop-zone" 
+                         ondragover="event.preventDefault(); this.classList.add('dragover')" 
+                         ondragleave="this.classList.remove('dragover')"
+                         ondrop="handleDrop(event, '${catId}', '${p.name}')">
+                         <span class="drop-text">Drop<br>Img</span>
+                       </div>`;
+        }
+        // --- IMAGE LOGIC END ---
+
         let actionHTML = '';
         if(isSold) {
           actionHTML = `<div class="small" style="color:#7c3aed">Sold: ${soldTo}</div>`;
@@ -739,13 +630,12 @@
            actionHTML += `<button class="yellow small" style="margin-left:4px" title="Reset Player" onclick="resetPlayer('${catId}', '${p.name}')">↺</button>`;
         }
 
-        // Updated onclick to just pass ID and Name (Prevents image code breaking the HTML)
-        const clickAction = `onclick="openPlayerDetails('${catId}', '${p.name}')"`;
-
         el.innerHTML = `
           <div class="left">
-            <div class="badge">${catId}</div>
-            <div class="name" style="cursor:pointer; text-decoration:underline" ${clickAction}>${p.name}</div>
+            ${imgHTML} <div>
+                <div class="badge" style="display:inline-block; margin-bottom:2px">${catId}</div>
+                <div class="name">${p.name}</div>
+            </div>
           </div>
           <div class="right" style="display:flex;align-items:center;gap:8px">
             <div class="price">${displayPrice}</div>
@@ -770,7 +660,6 @@
             if(reqBtn) {
               reqBtn.onclick = () => {
                 const myTeam = STATE.teams.find(t => t.id === CURRENT_USER.teamId);
-                // Validation (Same as your file)
                 if(myTeam) {
                   if(myTeam.purchases && myTeam.purchases[catId]) {
                     showToast('You already bought a player in this category!');
@@ -785,7 +674,6 @@
                       }
                     }
                   });
-
                   if (proposedBid + reserveCost > myTeam.purse) {
                      showToast(`Budget Warning! Bid+Reserves > Purse.`);
                      return; 
@@ -969,7 +857,6 @@
       if(confirm(`Delete Category ${id}?`)) socket.emit('admin:deleteCategory', { id });
     };
 
-    // Logging
     function getPlayerEl(cat, name) {
         const list = document.getElementById(`playersList-${cat}`);
         if(!list) return null;
