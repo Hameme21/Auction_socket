@@ -1,27 +1,11 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, push, onValue, update, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-// --- FIREBASE CONFIG ---
-const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    databaseURL: "YOUR_DATABASE_URL",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "SENDER_ID",
-    appId: "APP_ID"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const socket = io();
-
-// --- STATE ---
+// --- FIXED: MOVED STATE AND LOGIN TO TOP TO PREVENT CRASH BLOCKS ---
 let currentUser = { role: 'viewer', name: '' };
 let currentBidAmount = 0;
 let activePlayerId = null;
 
-// --- EXPOSE FUNCTIONS TO WINDOW (For HTML onclicks) ---
 window.appLogin = () => {
     const role = document.getElementById('userRole').value;
     const teamName = document.getElementById('teamNameInput').value;
@@ -38,6 +22,23 @@ window.appLogin = () => {
     }
 };
 
+// --- FIREBASE CONFIG ---
+// IMPORTANT: You MUST replace these placeholder values with your actual Firebase keys
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "YOUR_DATABASE_URL",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "SENDER_ID",
+    appId: "APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const socket = io();
+
+// --- EXPOSE FUNCTIONS TO WINDOW (For HTML onclicks) ---
 window.addPlayerToDB = () => {
     const name = document.getElementById('newPlayerName').value;
     const base = document.getElementById('newBasePrice').value;
