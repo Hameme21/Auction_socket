@@ -58,6 +58,7 @@ io.on('connection', (socket) => {
     });
 });
 
+// FIXED: Use process.env.PORT for Render hosting compatibility
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`listening on *:${PORT}`);
