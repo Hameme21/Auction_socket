@@ -425,7 +425,22 @@ function renderTeamConfigForm() {
         setupFileUpload(row.querySelector(`#drop-${t.id}`), (file) => uploadFile(file).then(url => socket.emit('admin:setTeamLogo', { teamId: t.id, logoUrl: url }))); 
     }); 
 }
-window.addTeamInputRow = () => { const row = document.createElement('div'); row.className = 'team-config-row'; row.innerHTML = `<input class="t-id" placeholder="ID"><input class="t-name" placeholder="Name"><input class="t-pass" placeholder="Pass"><input class="t-purse" type="number" value="500" placeholder="Purse"><div class="logo-drop-zone"><span>-</span></div><div></div><div></div><button class="red small" onclick="this.parentElement.remove()">X</button>`; teamsConfigContainer.appendChild(row); }
+
+// Fix: Give newly created rows an ID and attach the image upload listener so it previews immediately
+window.addTeamInputRow = () => { 
+    const row = document.createElement('div'); 
+    row.className = 'team-config-row'; 
+    const tempId = 'new-' + Date.now();
+    row.innerHTML = `<input class="t-id" placeholder="ID"><input class="t-name" placeholder="Name"><input class="t-pass" placeholder="Pass"><input class="t-purse" type="number" value="500" placeholder="Purse"><div class="logo-drop-zone" id="drop-${tempId}"><span>Drop</span></div><div></div><div></div><button class="red small" onclick="this.parentElement.remove()">X</button>`; 
+    teamsConfigContainer.appendChild(row); 
+    
+    // Attach the file uploader logic directly so the image previews in the circle
+    setupFileUpload(row.querySelector(`#drop-${tempId}`), (file) => {
+        uploadFile(file).then(url => {
+            row.querySelector('.logo-drop-zone').innerHTML = `<img src="${url}">`;
+        });
+    });
+}
 
 // Controls
 window.closePopup = () => { if(CURRENT_USER.role==='admin') socket.emit('admin:close_popup'); };
@@ -441,7 +456,23 @@ window.saveGlobalConfig = () => { const amt = document.getElementById('configImp
 window.resetImpact = (tid) => { if(confirm('Reset Impact Power?')) socket.emit('admin:resetImpact', { teamId: tid }); };
 window.resetTeam = (tid) => { if(confirm('Reset Team? (Clears purchases & purse)')) socket.emit('admin:resetTeam', { teamId: tid }); };
 document.getElementById('btnAddTeamRow').onclick = addTeamInputRow;
-document.getElementById('btnSaveTeams').onclick = () => { const teams = []; document.querySelectorAll('.team-config-row').forEach(r => { const id=r.querySelector('.t-id').value, name=r.querySelector('.t-name').value, pass=r.querySelector('.t-pass').value, purse=r.querySelector('.t-purse').value; if(id && name) teams.push({ id, name, password: pass, purse: Number(purse) }); }); socket.emit('admin:updateConfig', { teams }); showToast('Teams Saved'); };
+
+// Fix: Capture the image explicitly when the "Save Changes" button is clicked
+document.getElementById('btnSaveTeams').onclick = () => { 
+    const teams = []; 
+    document.querySelectorAll('.team-config-row').forEach(r => { 
+        const id=r.querySelector('.t-id').value;
+        const name=r.querySelector('.t-name').value;
+        const pass=r.querySelector('.t-pass').value;
+        const purse=r.querySelector('.t-purse').value;
+        const imgEl = r.querySelector('.logo-drop-zone img');
+        const logo = imgEl ? imgEl.src : null;
+        if(id && name) teams.push({ id, name, password: pass, purse: Number(purse), logo: logo }); 
+    }); 
+    socket.emit('admin:updateConfig', { teams }); 
+    showToast('Teams Saved'); 
+};
+
 document.getElementById('btnResetSystem').onclick = () => { if(confirm('WIPE DATA?')) socket.emit('admin:resetAll'); };
 function openSoldConfirmation(cat, name, price) { pendingSold = { category: cat, name, price: Number(price) }; const modal = document.getElementById('soldActionOverlay'), sel = document.getElementById('soldActionTeam'); document.getElementById('soldActionDetails').textContent = `${name} (${cat}) @ ${price}`; sel.innerHTML = ''; STATE.teams.forEach(t => { const afford = t.purse >= Number(price), has = t.purchases && t.purchases[cat]; sel.innerHTML += `<option value="${t.id}" ${(!afford || has)?'disabled':''}>${t.name} (৳${t.purse})</option>`; }); modal.classList.remove('hidden'); }
 document.getElementById('btnCancelSold').onclick = () => document.getElementById('soldActionOverlay').classList.add('hidden');
