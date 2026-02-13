@@ -135,7 +135,15 @@ io.on('connection', (socket) => {
         if (newConfig.teams) {
             STATE.teams = newConfig.teams.map(nt => {
                 const ot = STATE.teams.find(t => t.id === nt.id);
-                return { ...nt, logo: nt.logo || (ot ? ot.logo : null), purchases: ot ? ot.purchases : {}, impactUsed: ot ? ot.impactUsed : false, impactActive: ot ? ot.impactActive : false, impactTarget: ot ? ot.impactTarget : null };
+                // Fix: Merge impact states correctly to prevent them from resetting to false
+                return { 
+                    ...nt, 
+                    logo: nt.logo || (ot ? ot.logo : null), 
+                    purchases: ot ? ot.purchases : {}, 
+                    impactUsed: ot ? ot.impactUsed : (nt.impactUsed || false), 
+                    impactActive: ot ? ot.impactActive : (nt.impactActive || false), 
+                    impactTarget: ot ? ot.impactTarget : (nt.impactTarget || null) 
+                };
             });
         }
         if (newConfig.categories) STATE.categories = newConfig.categories;
@@ -149,7 +157,7 @@ io.on('connection', (socket) => {
         if (STATE.soldPrices) delete STATE.soldPrices[k];
         if (STATE.activeBids) delete STATE.activeBids[k];
         io.emit('state:updated', STATE);
-        io.emit('admin:toast', { msg: `Player ${name} Reset` }); // Toast Added
+        io.emit('admin:toast', { msg: `Player ${name} Reset` }); 
         saveToFirebase();
     });
     socket.on('admin:resetAll', () => { STATE.activeBids = {}; STATE.soldPrices = {}; STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.impactTarget = null; }); io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); saveToFirebase(); });
