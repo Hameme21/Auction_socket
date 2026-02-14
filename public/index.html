@@ -479,20 +479,34 @@ document.getElementById('btnAddTeamRow').onclick = addTeamInputRow;
 // FIX: Grab the image source during team save and show precise toast msg
 document.getElementById('btnSaveTeams').onclick = () => { 
     const teams = []; 
-    document.querySelectorAll('.team-config-row').forEach(r => { 
-        const id=r.querySelector('.t-id').value;
-        const name=r.querySelector('.t-name').value;
-        const pass=r.querySelector('.t-pass').value;
-        const purse=r.querySelector('.t-purse').value;
+    // Target only the rows inside the container to avoid reading the header row headers
+    document.querySelectorAll('#teamsConfigContainer .team-config-row').forEach(r => { 
+        const idInput = r.querySelector('.t-id');
+        const nameInput = r.querySelector('.t-name');
+        const passInput = r.querySelector('.t-pass');
+        const purseInput = r.querySelector('.t-purse');
         const imgEl = r.querySelector('.logo-drop-zone img');
-        const logo = imgEl ? imgEl.src : null;
+        
+        const id = idInput ? idInput.value.trim() : "";
+        const name = nameInput ? nameInput.value.trim() : "";
         
         if(id && name) {
-            teams.push({ id, name, password: pass, purse: Number(purse), logo: logo }); 
+            teams.push({ 
+                id: id, 
+                name: name, 
+                password: passInput ? passInput.value : "", 
+                purse: purseInput ? Number(purseInput.value) : 500, 
+                logo: imgEl ? imgEl.src : null 
+            }); 
         }
     }); 
-    socket.emit('admin:updateConfig', { teams }); 
-    showToast('Teams Saved Successfully!'); 
+    
+    if(teams.length > 0) {
+        socket.emit('admin:updateConfig', { teams }); 
+        showToast('Teams Saved Successfully!'); 
+    } else {
+        showToast('No valid teams to save!');
+    }
 };
 
 document.getElementById('btnResetSystem').onclick = () => { if(confirm('WIPE DATA?')) socket.emit('admin:resetAll'); };
