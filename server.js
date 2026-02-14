@@ -135,8 +135,15 @@ io.on('connection', (socket) => {
         if (newConfig.teams) {
             STATE.teams = newConfig.teams.map(nt => {
                 const ot = STATE.teams.find(t => t.id === nt.id);
-                // Correctly mapping the existing teams without overwriting logos and impacts
-                return { ...nt, logo: nt.logo || (ot ? ot.logo : null), purchases: ot ? ot.purchases : {}, impactUsed: ot ? ot.impactUsed : (nt.impactUsed || false), impactActive: ot ? ot.impactActive : (nt.impactActive || false), impactTarget: ot ? ot.impactTarget : (nt.impactTarget || null) };
+                // Fix: Properly merge and preserve logos and impact parameters!
+                return { 
+                    ...nt, 
+                    logo: nt.logo || (ot ? ot.logo : null), 
+                    purchases: ot ? ot.purchases : {}, 
+                    impactUsed: ot ? ot.impactUsed : (nt.impactUsed || false), 
+                    impactActive: ot ? ot.impactActive : (nt.impactActive || false), 
+                    impactTarget: ot ? ot.impactTarget : (nt.impactTarget || null) 
+                };
             });
         }
         if (newConfig.categories) STATE.categories = newConfig.categories;
