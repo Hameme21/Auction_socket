@@ -8,11 +8,8 @@ const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
-// 1. Update CORS to accept connections from your Vercel frontend
 const allowedOrigin = process.env.FRONTEND_URL || "*";
 
-// FIX: Added manual CORS Headers for Express. 
-// This stops the browser from blocking the HTTP image upload from Vercel to Render.
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
@@ -34,15 +31,12 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// 2. ONLY serve the uploads folder (Vercel handles the public HTML now)
 app.use('/uploads', express.static(uploadDir));
 
-// 3. Render Health Check Route
 app.get('/', (req, res) => {
   res.status(200).send('Auction Socket Server is running smoothly!');
 });
 
-// 4. Secure Firebase Initialization
 try {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -59,8 +53,8 @@ try {
 const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
-// Initialized with empty structures to prevent undefined errors
-let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
+// Added directSigns to global state
+let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, directSigns: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
 
 async function saveToFirebase() { 
     try { await DOC_REF.set(STATE); } catch (e) { console.error("Firebase Save Error:", e); }
@@ -71,12 +65,12 @@ async function loadFromFirebase() {
         const doc = await DOC_REF.get(); 
         if (doc.exists) { 
             STATE = doc.data(); 
-            // Bulletproof: Ensure nested objects always exist upon load
             if (!STATE.config) STATE.config = { impactAmount: 0 }; 
             if (!STATE.teams) STATE.teams = [];
             if (!STATE.categories) STATE.categories = [];
             if (!STATE.activeBids) STATE.activeBids = {};
             if (!STATE.soldPrices) STATE.soldPrices = {};
+            if (!STATE.directSigns) STATE.directSigns = {}; // Initialize upon load
             if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         } else { 
             await saveToFirebase(); 
@@ -102,7 +96,7 @@ io.on('connection', (socket) => {
     socket.on('manager:register', ({ username, password }) => {
         if (!STATE.managers) STATE.managers = {};
         if (STATE.managers[username]) return socket.emit('auth:portal_error', 'Taken');
-        if (!username || !password) return socket.emit('auth:portal_error', 'Missing Data'); // Bulletproof check
+        if (!username || !password) return socket.emit('auth:portal_error', 'Missing Data'); 
         STATE.managers[username] = password;
         saveToFirebase();
         socket.emit('auth:portal_success', { msg: 'Created' });
@@ -137,7 +131,7 @@ io.on('connection', (socket) => {
         const team = STATE.teams.find(t => t.id === teamId);
         const bonus = Number(STATE.config.impactAmount) || 0;
         if (team) {
-            if (team.impactActive) team.purse = Math.max(0, Number(team.purse) - bonus); // Bulletproof: Prevent negative purse
+            if (team.impactActive) team.purse = Math.max(0, Number(team.purse) - bonus); 
             team.impactUsed = false;
             team.impactActive = false;
             team.impactTarget = null;
@@ -150,11 +144,17 @@ io.on('connection', (socket) => {
     socket.on('admin:resetTeam', ({ teamId }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         if (team) {
-            team.purse = 500; // Assuming 500 is default base, could be dynamic
+            team.purse = 500;
+            if (STATE.directSigns) {
+                for (const cat in team.purchases) {
+                    delete STATE.directSigns[`${cat}:${team.purchases[cat]}`];
+                }
+            }
             team.purchases = {};
             team.impactUsed = false;
             team.impactActive = false;
             team.impactTarget = null;
+            team.directSignUsed = false; // Reset direct sign capability
             io.emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
             io.emit('state:updated', STATE);
             saveToFirebase();
@@ -186,7 +186,7 @@ io.on('connection', (socket) => {
 
     socket.on('player:bid', (data) => {
         const validPrice = Number(data.price);
-        if (isNaN(validPrice) || validPrice < 0) return; // Bulletproof: Ignore invalid prices
+        if (isNaN(validPrice) || validPrice < 0) return; 
 
         const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
@@ -206,10 +206,20 @@ io.on('connection', (socket) => {
         const validPrice = Number(data.price) || 0;
 
         if (team) {
-            // Bulletproof: Server-side validation for sufficient funds
             if (Number(team.purse) < validPrice) {
                 socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has insufficient funds!` });
                 return;
+            }
+            
+            // Validate Direct Sign limit
+            if (data.isDirect) {
+                if (team.directSignUsed) {
+                    socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has already used their Direct Sign!` });
+                    return;
+                }
+                team.directSignUsed = true;
+                if (!STATE.directSigns) STATE.directSigns = {};
+                STATE.directSigns[`${data.category}:${data.name}`] = true;
             }
 
             team.purse = Number(team.purse) - validPrice;
@@ -222,14 +232,12 @@ io.on('connection', (socket) => {
             const soldKey = `${data.category}:${data.name}`;
             
             STATE.teams.forEach(t => {
-                if (t.impactActive) {
-                    if(t.impactTarget === soldKey) {
-                        if(t.id === data.teamId) { 
-                            t.impactActive = false; 
-                        } else { 
-                            t.purse = Math.max(0, Number(t.purse) - bonus); 
-                            t.impactActive = false; 
-                        }
+                if (t.impactActive && t.impactTarget === soldKey) {
+                    if(t.id === data.teamId) { 
+                        t.impactActive = false; 
+                    } else { 
+                        t.purse = Math.max(0, Number(t.purse) - bonus); 
+                        t.impactActive = false; 
                     }
                 }
             });
@@ -246,17 +254,17 @@ io.on('connection', (socket) => {
             if (!STATE.config) STATE.config = {}; 
             STATE.config.impactAmount = Number(newConfig.impactAmount) || 0; 
         }
-        // Bulletproof: Ensure teams is an array before processing
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
             STATE.teams = newConfig.teams.map(nt => {
-                const ot = (STATE.teams || []).find(t => t.id === nt.id); // Safe fallback added here
+                const ot = (STATE.teams || []).find(t => t.id === nt.id); 
                 return { 
                     ...nt, 
                     logo: nt.logo || (ot ? ot.logo : null), 
                     purchases: ot && ot.purchases ? ot.purchases : {}, 
                     impactUsed: ot ? ot.impactUsed : false, 
                     impactActive: ot ? ot.impactActive : false, 
-                    impactTarget: ot ? ot.impactTarget : null 
+                    impactTarget: ot ? ot.impactTarget : null,
+                    directSignUsed: ot ? ot.directSignUsed : false // Keep track of DS
                 };
             });
         }
@@ -266,7 +274,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:setTeamLogo', ({ teamId, logoUrl }) => { 
-        const team = (STATE.teams || []).find(t => t.id === teamId); // Safe fallback added here
+        const team = (STATE.teams || []).find(t => t.id === teamId); 
         if (team) { 
             team.logo = logoUrl; 
             io.emit('state:updated', STATE); 
@@ -275,16 +283,22 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:resetPlayer', ({ category, name }) => {
+        const k = `${category}:${name}`;
+        const wasDirectSigned = STATE.directSigns && STATE.directSigns[k];
+
         STATE.teams.forEach(t => { 
             if (t.purchases && t.purchases[category] === name) { 
-                const price = STATE.soldPrices[`${category}:${name}`] || 0; 
+                const price = STATE.soldPrices[k] || 0; 
                 t.purse = Number(t.purse) + Number(price); 
                 delete t.purchases[category]; 
+                if (wasDirectSigned) t.directSignUsed = false; // Give DS back to the team
             } 
         });
-        const k = `${category}:${name}`;
+        
         if (STATE.soldPrices) delete STATE.soldPrices[k];
         if (STATE.activeBids) delete STATE.activeBids[k];
+        if (STATE.directSigns) delete STATE.directSigns[k];
+        
         io.emit('state:updated', STATE);
         io.emit('admin:toast', { msg: `Player ${name} Reset` }); 
         saveToFirebase();
@@ -293,12 +307,14 @@ io.on('connection', (socket) => {
     socket.on('admin:resetAll', () => { 
         STATE.activeBids = {}; 
         STATE.soldPrices = {}; 
+        STATE.directSigns = {};
         STATE.teams.forEach(t => { 
-            t.purse = 500; // Reset to default base
+            t.purse = 500; 
             t.purchases = {}; 
             t.impactUsed = false; 
             t.impactActive = false; 
             t.impactTarget = null; 
+            t.directSignUsed = false;
         }); 
         io.emit('state:updated', STATE); 
         io.emit('admin:toast', { msg: `System Full Reset` }); 
@@ -308,7 +324,6 @@ io.on('connection', (socket) => {
     socket.on('players:save', ({ category, players }) => {
         if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         const existing = STATE.playersSnapshot[category] || [];
-        // Bulletproof: Ensure mapped data holds correct types
         const merged = players.map(np => { 
             const op = existing.find(e => e.name === np.name); 
             return { name: np.name, price: Number(np.price) || 0, image: op ? op.image : null }; 
