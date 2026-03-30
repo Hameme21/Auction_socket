@@ -113,6 +113,14 @@ io.on('connection', (socket) => {
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
+    // ==========================================
+    // NEW: TIMER SYNCHRONIZATION EVENT
+    // ==========================================
+    socket.on('admin:timer_control', (data) => {
+        // Broadcast the pause/play state and current time to everyone else (Viewers/Teams)
+        io.emit('timer:sync', data);
+    });
+
     socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         const bonus = Number(STATE.config.impactAmount) || 0;
@@ -154,7 +162,7 @@ io.on('connection', (socket) => {
             team.impactUsed = false;
             team.impactActive = false;
             team.impactTarget = null;
-            team.directSignUsed = false; // Reset direct sign capability
+            team.directSignUsed = false; 
             io.emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
             io.emit('state:updated', STATE);
             saveToFirebase();
