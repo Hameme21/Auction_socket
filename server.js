@@ -334,7 +334,12 @@ io.on('connection', (socket) => {
         const existing = STATE.playersSnapshot[category] || [];
         const merged = players.map(np => { 
             const op = existing.find(e => e.name === np.name); 
-            return { name: np.name, price: Number(np.price) || 0, image: op ? op.image : null }; 
+            // FIX: Prioritize the new image (np.image), fallback to old image (op.image)
+            return { 
+                name: np.name, 
+                price: Number(np.price) || 0, 
+                image: np.image !== undefined ? np.image : (op ? op.image : null) 
+            }; 
         });
         STATE.playersSnapshot[category] = merged;
         io.emit('state:updated', STATE);
