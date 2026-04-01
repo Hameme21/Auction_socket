@@ -54,6 +54,7 @@ const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
 let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, directSigns: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
+let TIMER_STATE = { paused: false, time: 30 }; // Server-side timer cache
 
 async function saveToFirebase() { 
     try { await DOC_REF.set(STATE); } catch (e) { console.error("Firebase Save Error:", e); }
@@ -85,7 +86,11 @@ app.post('/upload', upload.any(), (req, res) => {
 });
 
 io.on('connection', (socket) => {
-    if (STATE.currentActivePlayer) socket.emit('popup:open', STATE.currentActivePlayer);
+    // Sync current active player AND the current network timer state to late joiners
+    if (STATE.currentActivePlayer) {
+        socket.emit('popup:open', STATE.currentActivePlayer);
+        socket.emit('timer:sync', TIMER_STATE); 
+    }
 
     socket.on('manager:login', ({ username, password }) => {
         if (STATE.managers && STATE.managers[username] === password) socket.emit('manager:logged_in', { username, state: STATE });
@@ -112,7 +117,9 @@ io.on('connection', (socket) => {
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
+    // Handle incoming timer ticks/syncs from the Admin
     socket.on('admin:timer_control', (data) => {
+        TIMER_STATE = data;
         io.emit('timer:sync', data);
     });
 
@@ -172,6 +179,7 @@ io.on('connection', (socket) => {
 
     socket.on('admin:close_popup', () => { 
         STATE.currentActivePlayer = null; 
+        TIMER_STATE = { paused: false, time: 30 }; // Reset server cache
         io.emit('popup:close'); 
         saveToFirebase(); 
     });
@@ -209,13 +217,11 @@ io.on('connection', (socket) => {
         const validPrice = Number(data.price) || 0;
 
         if (team) {
-            // NEW RULE: 1 Player per Category
             if (team.purchases && team.purchases[data.category]) {
                 socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} already has a player from ${data.category}!` });
                 return;
             }
 
-            // NEW RULE: Minimum Required Purse for Remaining Empty Categories
             let requiredReserve = 0;
             STATE.categories.forEach(cat => {
                 if (cat.id !== data.category) {
@@ -266,6 +272,7 @@ io.on('connection', (socket) => {
             });
             
             STATE.currentActivePlayer = null;
+            TIMER_STATE = { paused: false, time: 30 }; // Reset server cache
             io.emit('popup:close');
             io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
             saveToFirebase();
