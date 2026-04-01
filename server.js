@@ -53,7 +53,6 @@ try {
 const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
-// Added directSigns to global state
 let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, directSigns: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
 
 async function saveToFirebase() { 
@@ -70,7 +69,7 @@ async function loadFromFirebase() {
             if (!STATE.categories) STATE.categories = [];
             if (!STATE.activeBids) STATE.activeBids = {};
             if (!STATE.soldPrices) STATE.soldPrices = {};
-            if (!STATE.directSigns) STATE.directSigns = {}; // Initialize upon load
+            if (!STATE.directSigns) STATE.directSigns = {}; 
             if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         } else { 
             await saveToFirebase(); 
@@ -113,11 +112,7 @@ io.on('connection', (socket) => {
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
-    // ==========================================
-    // NEW: TIMER SYNCHRONIZATION EVENT
-    // ==========================================
     socket.on('admin:timer_control', (data) => {
-        // Broadcast the pause/play state and current time to everyone else (Viewers/Teams)
         io.emit('timer:sync', data);
     });
 
@@ -214,12 +209,32 @@ io.on('connection', (socket) => {
         const validPrice = Number(data.price) || 0;
 
         if (team) {
+            // NEW RULE: 1 Player per Category
+            if (team.purchases && team.purchases[data.category]) {
+                socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} already has a player from ${data.category}!` });
+                return;
+            }
+
+            // NEW RULE: Minimum Required Purse for Remaining Empty Categories
+            let requiredReserve = 0;
+            STATE.categories.forEach(cat => {
+                if (cat.id !== data.category) {
+                    if (!team.purchases || !team.purchases[cat.id]) {
+                        requiredReserve += Number(cat.base) || 0;
+                    }
+                }
+            });
+
+            if ((Number(team.purse) - validPrice) < requiredReserve) {
+                socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} does not have enough reserve purse for remaining categories!` });
+                return;
+            }
+
             if (Number(team.purse) < validPrice) {
                 socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has insufficient funds!` });
                 return;
             }
             
-            // Validate Direct Sign limit
             if (data.isDirect) {
                 if (team.directSignUsed) {
                     socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has already used their Direct Sign!` });
@@ -272,7 +287,7 @@ io.on('connection', (socket) => {
                     impactUsed: ot ? ot.impactUsed : false, 
                     impactActive: ot ? ot.impactActive : false, 
                     impactTarget: ot ? ot.impactTarget : null,
-                    directSignUsed: ot ? ot.directSignUsed : false // Keep track of DS
+                    directSignUsed: ot ? ot.directSignUsed : false 
                 };
             });
         }
@@ -299,7 +314,7 @@ io.on('connection', (socket) => {
                 const price = STATE.soldPrices[k] || 0; 
                 t.purse = Number(t.purse) + Number(price); 
                 delete t.purchases[category]; 
-                if (wasDirectSigned) t.directSignUsed = false; // Give DS back to the team
+                if (wasDirectSigned) t.directSignUsed = false;
             } 
         });
         
@@ -334,7 +349,6 @@ io.on('connection', (socket) => {
         const existing = STATE.playersSnapshot[category] || [];
         const merged = players.map(np => { 
             const op = existing.find(e => e.name === np.name); 
-            // FIX: Prioritize the new image (np.image), fallback to old image (op.image)
             return { 
                 name: np.name, 
                 price: Number(np.price) || 0, 
