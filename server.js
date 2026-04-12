@@ -1,14 +1,4 @@
-Here is the requested update. 
 
-This addresses three distinct elements you brought up:
-1.  **The Mobile Menu Fix:** Restoring `display: flex` and moving to a proper bottom nav approach so buttons aren't hidden on small screens.
-2.  **The Advanced RTM Flow:** Making it so the RTM team inputs a specific price, and the high bidder has to choose to match or decline.
-3.  **Advanced Grayscale Logic:** Ensuring teams are greyed out if they can't afford the current price *plus* minimum base prices for other remaining categories.
-
-### 1. `server.js` (Backend)
-This updates the backend to manage the specific RTM "set price" flow instead of the automated "+1 increment" flow.
-
-```javascript
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
