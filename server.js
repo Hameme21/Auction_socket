@@ -53,17 +53,22 @@ try {
 const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
-let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, directSigns: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
+// Added: previousOwners and activeBidders
+let STATE = { 
+    teams: [], categories: [], playersSnapshot: {}, activeBids: {}, 
+    activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, 
+    managers: {}, currentActivePlayer: null, config: { impactAmount: 0 },
+    rtmState: null
+};
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
 
-// --- OPTIMIZATION: Debounce frequent writes ---
 let firebaseSaveTimeout = null;
 function debouncedSaveToFirebase() {
     if (firebaseSaveTimeout) clearTimeout(firebaseSaveTimeout);
     firebaseSaveTimeout = setTimeout(async () => {
         try { await DOC_REF.set(STATE); } catch (e) { console.error("Firebase Save Error:", e); }
-    }, 2000); // Only hit Firebase max once every 2 seconds during heavy bidding
+    }, 2000); 
 }
 
 async function immediateSaveToFirebase() { 
@@ -79,6 +84,8 @@ async function loadFromFirebase() {
             if (!STATE.teams) STATE.teams = [];
             if (!STATE.categories) STATE.categories = [];
             if (!STATE.activeBids) STATE.activeBids = {};
+            if (!STATE.activeBidders) STATE.activeBidders = {};
+            if (!STATE.previousOwners) STATE.previousOwners = {};
             if (!STATE.soldPrices) STATE.soldPrices = {};
             if (!STATE.directSigns) STATE.directSigns = {}; 
             if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
@@ -94,6 +101,77 @@ app.post('/upload', upload.any(), (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).send('No file.'); 
     res.json({ url: `/uploads/${req.files[0].filename}` }); 
 });
+
+// Helper for Centralized Selling Logic
+function executeSale(data) {
+    const team = STATE.teams.find(t => t.id === data.teamId);
+    const validPrice = Number(data.price) || 0;
+
+    if (team) {
+        if (team.purchases && team.purchases[data.category]) {
+            io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} already has a player from ${data.category}!` });
+            return false;
+        }
+
+        let requiredReserve = 0;
+        STATE.categories.forEach(cat => {
+            if (cat.id !== data.category) {
+                if (!team.purchases || !team.purchases[cat.id]) {
+                    requiredReserve += Number(cat.base) || 0;
+                }
+            }
+        });
+
+        if ((Number(team.purse) - validPrice) < requiredReserve) {
+            io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} lacks reserve purse for remaining categories!` });
+            return false;
+        }
+
+        if (Number(team.purse) < validPrice) {
+            io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has insufficient funds!` });
+            return false;
+        }
+        
+        if (data.isDirect && !data.isRTM) {
+            if (team.directSignUsed) {
+                io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has already used their Direct Sign!` });
+                return false;
+            }
+            team.directSignUsed = true;
+            if (!STATE.directSigns) STATE.directSigns = {};
+            STATE.directSigns[`${data.category}:${data.name}`] = true;
+        }
+
+        team.purse = Number(team.purse) - validPrice;
+        team.purchases = team.purchases || {};
+        team.purchases[data.category] = data.name;
+        if (!STATE.soldPrices) STATE.soldPrices = {};
+        STATE.soldPrices[`${data.category}:${data.name}`] = validPrice;
+        
+        const bonus = Number(STATE.config.impactAmount) || 0;
+        const soldKey = `${data.category}:${data.name}`;
+        
+        STATE.teams.forEach(t => {
+            if (t.impactActive && t.impactTarget === soldKey) {
+                if(t.id === data.teamId) { 
+                    t.impactActive = false; 
+                } else { 
+                    t.purse = Math.max(0, Number(t.purse) - bonus); 
+                    t.impactActive = false; 
+                }
+            }
+        });
+        
+        STATE.currentActivePlayer = null;
+        TIMER_STATE = { paused: false, time: 30 }; 
+        clearInterval(serverTimerInterval);
+        io.emit('popup:close');
+        io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
+        immediateSaveToFirebase();
+        return true;
+    }
+    return false;
+}
 
 io.on('connection', (socket) => {
     if (STATE.currentActivePlayer) {
@@ -126,22 +204,28 @@ io.on('connection', (socket) => {
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
-    // --- OPTIMIZATION: Server side timer execution ---
     socket.on('admin:timer_control', (data) => {
         TIMER_STATE = data;
         clearInterval(serverTimerInterval);
-        
         if (!data.paused && data.time > 0) {
             serverTimerInterval = setInterval(() => {
                 TIMER_STATE.time--;
                 io.emit('timer:sync', TIMER_STATE);
-                if (TIMER_STATE.time <= 0) {
-                    clearInterval(serverTimerInterval);
-                }
+                if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
             }, 1000);
         } else {
             io.emit('timer:sync', TIMER_STATE);
         }
+    });
+
+    // --- NEW: Import Previous Owners (RTM Eligibility Tagging) ---
+    socket.on('admin:import_previous', ({ teamId, players }) => {
+        if (!STATE.previousOwners) STATE.previousOwners = {};
+        players.forEach(p => {
+            STATE.previousOwners[`${p.catId}:${p.name}`] = teamId;
+        });
+        io.emit('state:updated', STATE);
+        debouncedSaveToFirebase();
     });
 
     socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
@@ -217,89 +301,79 @@ io.on('connection', (socket) => {
         immediateSaveToFirebase();
     });
 
+    // --- UPDATED: Track Bidding Teams ---
     socket.on('player:bid', (data) => {
         const validPrice = Number(data.price);
         if (isNaN(validPrice) || validPrice < 0) return; 
 
         const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
+        if (!STATE.activeBidders) STATE.activeBidders = {};
+
         STATE.activeBids[key] = validPrice;
+        if (data.teamId) {
+            STATE.activeBidders[key] = data.teamId;
+        } else {
+            // If admin forces a bid manually, it wipes the team ID until a team bids again
+            STATE.activeBidders[key] = null;
+        }
         
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
             STATE.currentActivePlayer.currentPrice = validPrice;
         }
-        // ONLY emit the tiny data delta to clients, save to Firebase on debounce
+        
         io.emit('player:bid', { ...data, price: validPrice });
         debouncedSaveToFirebase(); 
     });
 
     socket.on('bid:request', (data) => io.emit('admin:toast', { msg: `✋ Bid Req: ${data.teamName} for ${data.playerName}` }));
 
+    // Standard Gavel Drop
     socket.on('player:sold', (data) => {
-        const team = STATE.teams.find(t => t.id === data.teamId);
-        const validPrice = Number(data.price) || 0;
+        executeSale(data);
+    });
 
-        if (team) {
-            if (team.purchases && team.purchases[data.category]) {
-                socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} already has a player from ${data.category}!` });
-                return;
-            }
+    // --- NEW: RTM Invoke Flow ---
+    socket.on('rtm:invoke', ({ category, name, rtmTeamId, manualHighBidderId }) => {
+        const key = `${category}:${name}`;
+        const currentBid = STATE.activeBids[key] || 0;
+        const highBidder = manualHighBidderId || (STATE.activeBidders ? STATE.activeBidders[key] : null);
 
-            let requiredReserve = 0;
-            STATE.categories.forEach(cat => {
-                if (cat.id !== data.category) {
-                    if (!team.purchases || !team.purchases[cat.id]) {
-                        requiredReserve += Number(cat.base) || 0;
-                    }
-                }
-            });
+        const catConfig = STATE.categories.find(c => c.id === category);
+        const base = Number(catConfig?.base) || 0;
+        const increment = Number(catConfig?.increment) || 0;
+        
+        // RTM requires min 1 bid increment increase over the current winning bid
+        let newPrice = currentBid === 0 ? base : (currentBid + increment);
 
-            if ((Number(team.purse) - validPrice) < requiredReserve) {
-                socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} does not have enough reserve purse for remaining categories!` });
-                return;
-            }
+        // If no one else has bid, sell it directly to the RTM team at Base price
+        if (!highBidder || highBidder === rtmTeamId) {
+            executeSale({ category, name, price: newPrice, teamId: rtmTeamId, isDirect: true, isRTM: true });
+            return;
+        }
 
-            if (Number(team.purse) < validPrice) {
-                socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has insufficient funds!` });
-                return;
-            }
-            
-            if (data.isDirect) {
-                if (team.directSignUsed) {
-                    socket.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has already used their Direct Sign!` });
-                    return;
-                }
-                team.directSignUsed = true;
-                if (!STATE.directSigns) STATE.directSigns = {};
-                STATE.directSigns[`${data.category}:${data.name}`] = true;
-            }
+        STATE.rtmState = { category, name, rtmTeamId, originalTeamId: highBidder, newPrice };
+        io.emit('state:updated', STATE);
+        io.emit('rtm:prompt', STATE.rtmState);
+        immediateSaveToFirebase();
+    });
 
-            team.purse = Number(team.purse) - validPrice;
-            team.purchases = team.purchases || {};
-            team.purchases[data.category] = data.name;
-            if (!STATE.soldPrices) STATE.soldPrices = {};
-            STATE.soldPrices[`${data.category}:${data.name}`] = validPrice;
-            
-            const bonus = Number(STATE.config.impactAmount) || 0;
-            const soldKey = `${data.category}:${data.name}`;
-            
-            STATE.teams.forEach(t => {
-                if (t.impactActive && t.impactTarget === soldKey) {
-                    if(t.id === data.teamId) { 
-                        t.impactActive = false; 
-                    } else { 
-                        t.purse = Math.max(0, Number(t.purse) - bonus); 
-                        t.impactActive = false; 
-                    }
-                }
-            });
-            
-            STATE.currentActivePlayer = null;
-            TIMER_STATE = { paused: false, time: 30 }; 
-            clearInterval(serverTimerInterval);
-            io.emit('popup:close');
-            io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
-            immediateSaveToFirebase();
+    // --- NEW: RTM Response Flow ---
+    socket.on('rtm:respond', ({ accept }) => {
+        if (!STATE.rtmState) return;
+        const { category, name, rtmTeamId, originalTeamId, newPrice } = STATE.rtmState;
+        
+        // Clear state immediately
+        STATE.rtmState = null;
+        io.emit('state:updated', STATE);
+        io.emit('rtm:cleared');
+
+        if (accept) {
+            // Original high bidder matched the price
+            executeSale({ category, name, price: newPrice, teamId: originalTeamId, isDirect: false, isRTM: false });
+        } else {
+            // Original bidder declined, RTM Team wins it at the new price
+            executeSale({ category, name, price: newPrice, teamId: rtmTeamId, isDirect: true, isRTM: true });
         }
     });
 
@@ -351,6 +425,7 @@ io.on('connection', (socket) => {
         
         if (STATE.soldPrices) delete STATE.soldPrices[k];
         if (STATE.activeBids) delete STATE.activeBids[k];
+        if (STATE.activeBidders) delete STATE.activeBidders[k];
         if (STATE.directSigns) delete STATE.directSigns[k];
         
         io.emit('state:updated', STATE);
@@ -360,8 +435,11 @@ io.on('connection', (socket) => {
 
     socket.on('admin:resetAll', () => { 
         STATE.activeBids = {}; 
+        STATE.activeBidders = {};
+        STATE.previousOwners = {};
         STATE.soldPrices = {}; 
         STATE.directSigns = {};
+        STATE.rtmState = null;
         STATE.teams.forEach(t => { 
             t.purse = 500; 
             t.purchases = {}; 
