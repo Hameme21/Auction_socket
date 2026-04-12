@@ -54,9 +54,19 @@ const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
 let STATE = { teams: [], categories: [], playersSnapshot: {}, activeBids: {}, soldPrices: {}, directSigns: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }};
-let TIMER_STATE = { paused: false, time: 30 }; // Server-side timer cache
+let TIMER_STATE = { paused: false, time: 30 };
+let serverTimerInterval = null;
 
-async function saveToFirebase() { 
+// --- OPTIMIZATION: Debounce frequent writes ---
+let firebaseSaveTimeout = null;
+function debouncedSaveToFirebase() {
+    if (firebaseSaveTimeout) clearTimeout(firebaseSaveTimeout);
+    firebaseSaveTimeout = setTimeout(async () => {
+        try { await DOC_REF.set(STATE); } catch (e) { console.error("Firebase Save Error:", e); }
+    }, 2000); // Only hit Firebase max once every 2 seconds during heavy bidding
+}
+
+async function immediateSaveToFirebase() { 
     try { await DOC_REF.set(STATE); } catch (e) { console.error("Firebase Save Error:", e); }
 }
 
@@ -73,7 +83,7 @@ async function loadFromFirebase() {
             if (!STATE.directSigns) STATE.directSigns = {}; 
             if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         } else { 
-            await saveToFirebase(); 
+            await immediateSaveToFirebase(); 
         } 
     } catch (e) { 
         console.log("Firebase Load Error:", e); 
@@ -86,7 +96,6 @@ app.post('/upload', upload.any(), (req, res) => {
 });
 
 io.on('connection', (socket) => {
-    // Sync current active player AND the current network timer state to late joiners
     if (STATE.currentActivePlayer) {
         socket.emit('popup:open', STATE.currentActivePlayer);
         socket.emit('timer:sync', TIMER_STATE); 
@@ -102,7 +111,7 @@ io.on('connection', (socket) => {
         if (STATE.managers[username]) return socket.emit('auth:portal_error', 'Taken');
         if (!username || !password) return socket.emit('auth:portal_error', 'Missing Data'); 
         STATE.managers[username] = password;
-        saveToFirebase();
+        immediateSaveToFirebase();
         socket.emit('auth:portal_success', { msg: 'Created' });
     });
 
@@ -117,10 +126,22 @@ io.on('connection', (socket) => {
         socket.emit('auction:enter', { role, teamId, state: STATE });
     });
 
-    // Handle incoming timer ticks/syncs from the Admin
+    // --- OPTIMIZATION: Server side timer execution ---
     socket.on('admin:timer_control', (data) => {
         TIMER_STATE = data;
-        io.emit('timer:sync', data);
+        clearInterval(serverTimerInterval);
+        
+        if (!data.paused && data.time > 0) {
+            serverTimerInterval = setInterval(() => {
+                TIMER_STATE.time--;
+                io.emit('timer:sync', TIMER_STATE);
+                if (TIMER_STATE.time <= 0) {
+                    clearInterval(serverTimerInterval);
+                }
+            }, 1000);
+        } else {
+            io.emit('timer:sync', TIMER_STATE);
+        }
     });
 
     socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
@@ -133,7 +154,7 @@ io.on('connection', (socket) => {
             team.impactTarget = `${category}:${playerName}`; 
             io.emit('admin:toast', { msg: `⚡ IMPACT: ${team.name} on ${playerName}`, type: 'impact' });
             io.emit('state:updated', STATE);
-            saveToFirebase();
+            immediateSaveToFirebase();
         }
     });
 
@@ -147,7 +168,7 @@ io.on('connection', (socket) => {
             team.impactTarget = null;
             io.emit('admin:toast', { msg: `↩️ Impact Reset for ${team.name}`, type: 'normal' });
             io.emit('state:updated', STATE);
-            saveToFirebase();
+            immediateSaveToFirebase();
         }
     });
 
@@ -167,21 +188,22 @@ io.on('connection', (socket) => {
             team.directSignUsed = false; 
             io.emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
             io.emit('state:updated', STATE);
-            saveToFirebase();
+            immediateSaveToFirebase();
         }
     });
 
     socket.on('admin:select_player', (playerData) => { 
         STATE.currentActivePlayer = playerData; 
         io.emit('popup:open', playerData); 
-        saveToFirebase(); 
+        immediateSaveToFirebase(); 
     });
 
     socket.on('admin:close_popup', () => { 
         STATE.currentActivePlayer = null; 
-        TIMER_STATE = { paused: false, time: 30 }; // Reset server cache
+        TIMER_STATE = { paused: false, time: 30 }; 
+        clearInterval(serverTimerInterval);
         io.emit('popup:close'); 
-        saveToFirebase(); 
+        immediateSaveToFirebase(); 
     });
 
     socket.on('admin:update_player_image', ({ category, name, imageUrl }) => {
@@ -192,7 +214,7 @@ io.on('connection', (socket) => {
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === name) STATE.currentActivePlayer.image = imageUrl;
         io.emit('state:updated', STATE);
         io.emit('popup:update_image', { imageUrl });
-        saveToFirebase();
+        immediateSaveToFirebase();
     });
 
     socket.on('player:bid', (data) => {
@@ -206,8 +228,9 @@ io.on('connection', (socket) => {
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
             STATE.currentActivePlayer.currentPrice = validPrice;
         }
+        // ONLY emit the tiny data delta to clients, save to Firebase on debounce
         io.emit('player:bid', { ...data, price: validPrice });
-        saveToFirebase();
+        debouncedSaveToFirebase(); 
     });
 
     socket.on('bid:request', (data) => io.emit('admin:toast', { msg: `✋ Bid Req: ${data.teamName} for ${data.playerName}` }));
@@ -272,10 +295,11 @@ io.on('connection', (socket) => {
             });
             
             STATE.currentActivePlayer = null;
-            TIMER_STATE = { paused: false, time: 30 }; // Reset server cache
+            TIMER_STATE = { paused: false, time: 30 }; 
+            clearInterval(serverTimerInterval);
             io.emit('popup:close');
             io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
-            saveToFirebase();
+            immediateSaveToFirebase();
         }
     });
 
@@ -300,7 +324,7 @@ io.on('connection', (socket) => {
         }
         if (newConfig.categories && Array.isArray(newConfig.categories)) STATE.categories = newConfig.categories;
         io.emit('state:updated', STATE);
-        saveToFirebase();
+        immediateSaveToFirebase();
     });
 
     socket.on('admin:setTeamLogo', ({ teamId, logoUrl }) => { 
@@ -308,7 +332,7 @@ io.on('connection', (socket) => {
         if (team) { 
             team.logo = logoUrl; 
             io.emit('state:updated', STATE); 
-            saveToFirebase(); 
+            immediateSaveToFirebase(); 
         } 
     });
 
@@ -331,7 +355,7 @@ io.on('connection', (socket) => {
         
         io.emit('state:updated', STATE);
         io.emit('admin:toast', { msg: `Player ${name} Reset` }); 
-        saveToFirebase();
+        immediateSaveToFirebase();
     });
 
     socket.on('admin:resetAll', () => { 
@@ -348,7 +372,7 @@ io.on('connection', (socket) => {
         }); 
         io.emit('state:updated', STATE); 
         io.emit('admin:toast', { msg: `System Full Reset` }); 
-        saveToFirebase(); 
+        immediateSaveToFirebase(); 
     });
 
     socket.on('players:save', ({ category, players }) => {
@@ -364,21 +388,21 @@ io.on('connection', (socket) => {
         });
         STATE.playersSnapshot[category] = merged;
         io.emit('state:updated', STATE);
-        saveToFirebase();
+        immediateSaveToFirebase();
     });
 
     socket.on('players:clear', ({ category }) => { 
         if (STATE.playersSnapshot[category]) { 
             delete STATE.playersSnapshot[category]; 
             io.emit('state:updated', STATE); 
-            saveToFirebase(); 
+            immediateSaveToFirebase(); 
         } 
     });
 
     socket.on('admin:deleteCategory', ({ id }) => { 
         STATE.categories = STATE.categories.filter(c => c.id !== id); 
         io.emit('state:updated', STATE); 
-        saveToFirebase(); 
+        immediateSaveToFirebase(); 
     });
 });
 
