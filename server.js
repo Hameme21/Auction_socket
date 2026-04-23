@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -50,7 +49,8 @@ const db = admin.firestore();
 const DOC_REF = db.collection('auction_data').doc('current_state');
 
 let STATE = { 
-    teams: [], categories: [], playersSnapshot: {}, activeBids: {}, activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, rtmEvents: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }, rtmState: null
+    teams: [], categories: [], playersSnapshot: {}, activeBids: {}, activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, rtmEvents: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }, rtmState: null,
+    lotteryQueue: [], unsoldPlayers: {}, biddingActive: false
 };
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
@@ -80,6 +80,9 @@ async function loadFromFirebase() {
             if (!STATE.directSigns) STATE.directSigns = {}; 
             if (!STATE.rtmEvents) STATE.rtmEvents = {}; 
             if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
+            if (!STATE.lotteryQueue) STATE.lotteryQueue = [];
+            if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
+            if (STATE.biddingActive === undefined) STATE.biddingActive = false;
         } else { await immediateSaveToFirebase(); } 
     } catch (e) { console.log("Firebase Load Error:", e); } 
 }
@@ -143,6 +146,7 @@ function executeSale(data) {
         });
         
         STATE.currentActivePlayer = null;
+        STATE.biddingActive = false;
         TIMER_STATE = { paused: false, time: 30 }; 
         clearInterval(serverTimerInterval);
         io.emit('popup:close');
@@ -157,6 +161,7 @@ io.on('connection', (socket) => {
     if (STATE.currentActivePlayer) {
         socket.emit('popup:open', STATE.currentActivePlayer);
         socket.emit('timer:sync', TIMER_STATE); 
+        if(STATE.biddingActive) socket.emit('bidding:started');
     }
     if (STATE.rtmState) socket.emit('rtm:prompt', STATE.rtmState);
 
@@ -197,6 +202,70 @@ io.on('connection', (socket) => {
         } else {
             io.emit('timer:sync', TIMER_STATE);
         }
+    });
+    
+    // --- LOTTERY CONTROLS ---
+    socket.on('admin:generate_lottery', () => {
+        let pool = [];
+        let unsoldPool = [];
+        STATE.categories.forEach(cat => {
+            const players = STATE.playersSnapshot[cat.id] || [];
+            players.forEach(p => {
+                const key = `${cat.id}:${p.name}`;
+                let isSold = false;
+                STATE.teams.forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
+                if (!isSold) {
+                    if (STATE.unsoldPlayers && STATE.unsoldPlayers[key]) {
+                        unsoldPool.push({ category: cat.id, name: p.name, base: cat.base, image: p.image, isUnsold: true });
+                    } else {
+                        pool.push({ category: cat.id, name: p.name, base: cat.base, image: p.image, isUnsold: false });
+                    }
+                }
+            });
+        });
+        pool = pool.sort(() => Math.random() - 0.5);
+        unsoldPool = unsoldPool.sort(() => Math.random() - 0.5);
+        STATE.lotteryQueue = [...pool, ...unsoldPool];
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
+
+    socket.on('admin:start_bidding', () => {
+        STATE.biddingActive = true;
+        TIMER_STATE = { paused: false, time: 30 };
+        clearInterval(serverTimerInterval);
+        serverTimerInterval = setInterval(() => {
+            TIMER_STATE.time--;
+            io.emit('timer:sync', TIMER_STATE);
+            if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
+        }, 1000);
+        io.emit('bidding:started');
+        immediateSaveToFirebase();
+    });
+    
+    socket.on('admin:mark_unsold', ({ category, name }) => {
+        const key = `${category}:${name}`;
+        if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
+        STATE.unsoldPlayers[key] = true;
+        
+        // Push the unsold player to the END of the lottery queue so they appear last
+        if (STATE.lotteryQueue) {
+            STATE.lotteryQueue = STATE.lotteryQueue.filter(p => !(p.category === category && p.name === name));
+            const cat = STATE.categories.find(c => c.id === category);
+            const pObj = (STATE.playersSnapshot[category] || []).find(p => p.name === name);
+            if (cat && pObj) {
+                STATE.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, isUnsold: true });
+            }
+        }
+
+        STATE.currentActivePlayer = null;
+        STATE.biddingActive = false;
+        TIMER_STATE = { paused: false, time: 30 };
+        clearInterval(serverTimerInterval);
+        io.emit('popup:close');
+        io.emit('player:unsold', { category, name });
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
     });
 
     socket.on('admin:import_previous', ({ teamId, players }) => {
@@ -254,12 +323,17 @@ io.on('connection', (socket) => {
 
     socket.on('admin:select_player', (playerData) => { 
         STATE.currentActivePlayer = playerData; 
+        STATE.biddingActive = false;
+        TIMER_STATE = { paused: true, time: 30 }; 
+        clearInterval(serverTimerInterval);
         io.emit('popup:open', playerData); 
+        io.emit('timer:sync', TIMER_STATE);
         immediateSaveToFirebase(); 
     });
 
     socket.on('admin:close_popup', () => { 
         STATE.currentActivePlayer = null; 
+        STATE.biddingActive = false;
         TIMER_STATE = { paused: false, time: 30 }; 
         clearInterval(serverTimerInterval);
         io.emit('popup:close'); 
@@ -286,19 +360,25 @@ io.on('connection', (socket) => {
 
     socket.on('player:sold', (data) => { executeSale(data); });
 
-    // --- RTM Phase 1: Team Sets Price ---
-    socket.on('rtm:set_price', ({ category, name, rtmTeamId, newPrice, manualHighBidderId }) => {
+    // --- RTM Phase 1: Team Sets Price + Match High Bidder ---
+    socket.on('rtm:invoke', ({ category, name, rtmTeamId, manualHighBidderId }) => {
         const key = `${category}:${name}`;
         const highBidder = manualHighBidderId || (STATE.activeBidders ? STATE.activeBidders[key] : null);
+        const currentBid = STATE.activeBids ? STATE.activeBids[key] : null;
+        const cat = STATE.categories.find(c => c.id === category);
+        const inc = Number(cat?.increment) || 0;
+        
+        const base = Number(cat?.base) || 0;
+        const priceToMatch = (Number(currentBid) || 0) === 0 ? base : (Number(currentBid) + inc);
 
-        // If no one else has bid, sell it directly to the RTM team at the price they entered
+        // If no one else has bid, sell it directly to the RTM team at base
         if (!highBidder || highBidder === rtmTeamId) {
-            executeSale({ category, name, price: newPrice, teamId: rtmTeamId, isDirect: true, isRTM: true });
+            executeSale({ category, name, price: priceToMatch, teamId: rtmTeamId, isDirect: true, isRTM: true });
             return;
         }
 
-        // Send prompt to the high bidder to accept or decline the new price
-        STATE.rtmState = { category, name, rtmTeamId, originalTeamId: highBidder, newPrice };
+        // Send prompt to the high bidder to accept or decline the incremented RTM matching price
+        STATE.rtmState = { category, name, rtmTeamId, originalTeamId: highBidder, newPrice: priceToMatch };
         io.emit('state:updated', STATE);
         io.emit('rtm:prompt', STATE.rtmState);
         immediateSaveToFirebase();
@@ -337,6 +417,7 @@ io.on('connection', (socket) => {
 
     socket.on('admin:resetAll', () => { 
         STATE.activeBids = {}; STATE.activeBidders = {}; STATE.previousOwners = {}; STATE.soldPrices = {}; STATE.directSigns = {}; STATE.rtmEvents = {}; STATE.rtmState = null;
+        STATE.lotteryQueue = []; STATE.unsoldPlayers = {}; STATE.biddingActive = false;
         STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.directSignUsed = false; t.rtmUsed = false; }); 
         io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
     });
