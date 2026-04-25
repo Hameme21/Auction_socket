@@ -55,6 +55,59 @@ let STATE = {
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
 
+function codeSeed(category, name) {
+    return `${category || ''}:${name || ''}`.toUpperCase();
+}
+
+function hashCode(input) {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+        hash = ((hash << 5) - hash + input.charCodeAt(i)) >>> 0;
+    }
+    return hash.toString(36).toUpperCase();
+}
+
+function makePlayerCode(category, name, usedCodes) {
+    const catPart = String(category || 'XX').replace(/[^A-Z0-9]/gi, '').toUpperCase().padEnd(2, 'X').slice(0, 2);
+    const seed = codeSeed(category, name);
+    let attempt = 0;
+    let code = '';
+    do {
+        const suffix = hashCode(`${seed}:${attempt}`).padStart(3, '0');
+        code = `${catPart}${suffix}`.slice(0, 4);
+        attempt++;
+    } while (usedCodes.has(code) && attempt < 100);
+    usedCodes.add(code);
+    return code;
+}
+
+function buildShufflePool() {
+    const usedCodes = new Set();
+    const pool = [];
+    const unsoldPool = [];
+    STATE.categories.forEach(cat => {
+        const players = STATE.playersSnapshot[cat.id] || [];
+        players.forEach(p => {
+            const key = `${cat.id}:${p.name}`;
+            let isSold = false;
+            STATE.teams.forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
+            if (!isSold) {
+                const entry = {
+                    category: cat.id,
+                    name: p.name,
+                    base: cat.base,
+                    image: p.image,
+                    code: makePlayerCode(cat.id, p.name, usedCodes),
+                    isUnsold: !!(STATE.unsoldPlayers && STATE.unsoldPlayers[key])
+                };
+                if (entry.isUnsold) unsoldPool.push(entry);
+                else pool.push(entry);
+            }
+        });
+    });
+    return { pool, unsoldPool };
+}
+
 let firebaseSaveTimeout = null;
 function debouncedSaveToFirebase() {
     if (firebaseSaveTimeout) clearTimeout(firebaseSaveTimeout);
@@ -204,31 +257,17 @@ io.on('connection', (socket) => {
         }
     });
     
-    // --- LOTTERY CONTROLS ---
-    socket.on('admin:generate_lottery', () => {
-        let pool = [];
-        let unsoldPool = [];
-        STATE.categories.forEach(cat => {
-            const players = STATE.playersSnapshot[cat.id] || [];
-            players.forEach(p => {
-                const key = `${cat.id}:${p.name}`;
-                let isSold = false;
-                STATE.teams.forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
-                if (!isSold) {
-                    if (STATE.unsoldPlayers && STATE.unsoldPlayers[key]) {
-                        unsoldPool.push({ category: cat.id, name: p.name, base: cat.base, image: p.image, isUnsold: true });
-                    } else {
-                        pool.push({ category: cat.id, name: p.name, base: cat.base, image: p.image, isUnsold: false });
-                    }
-                }
-            });
-        });
+    // --- CODE SHUFFLE CONTROLS ---
+    const shuffleCodes = () => {
+        let { pool, unsoldPool } = buildShufflePool();
         pool = pool.sort(() => Math.random() - 0.5);
         unsoldPool = unsoldPool.sort(() => Math.random() - 0.5);
         STATE.lotteryQueue = [...pool, ...unsoldPool];
         io.emit('state:updated', STATE);
         immediateSaveToFirebase();
-    });
+    };
+    socket.on('admin:shuffle_codes', shuffleCodes);
+    socket.on('admin:generate_lottery', shuffleCodes);
 
     socket.on('admin:start_bidding', () => {
         STATE.biddingActive = true;
@@ -254,7 +293,8 @@ io.on('connection', (socket) => {
             const cat = STATE.categories.find(c => c.id === category);
             const pObj = (STATE.playersSnapshot[category] || []).find(p => p.name === name);
             if (cat && pObj) {
-                STATE.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, isUnsold: true });
+                const usedCodes = new Set(STATE.lotteryQueue.map(p => p.code).filter(Boolean));
+                STATE.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, code: makePlayerCode(cat.id, pObj.name, usedCodes), isUnsold: true });
             }
         }
 
