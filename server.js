@@ -452,12 +452,56 @@ io.on('connection', (socket) => {
         immediateSaveToFirebase();
     });
 
+    socket.on('players:save', ({ category, players }) => {
+        if (!category || !Array.isArray(players)) return;
+        if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
+        STATE.playersSnapshot[category] = players;
+        STATE.lotteryQueue = (STATE.lotteryQueue || []).map(qp => {
+            if (qp.category !== category) return qp;
+            const updated = players.find(p => p.name === qp.name);
+            return updated ? { ...qp, image: updated.image, name: updated.name, base: qp.base } : qp;
+        });
+
+        if (STATE.currentActivePlayer && STATE.currentActivePlayer.category === category) {
+            const updatedActive = players.find(p => p.name === STATE.currentActivePlayer.name);
+            if (updatedActive) {
+                STATE.currentActivePlayer = { ...STATE.currentActivePlayer, ...updatedActive, image: updatedActive.image || STATE.currentActivePlayer.image };
+                io.emit('popup:update_image', { imageUrl: STATE.currentActivePlayer.image });
+            }
+        }
+
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
+
+    socket.on('players:clear', ({ category }) => {
+        if (!category) return;
+        if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
+        STATE.playersSnapshot[category] = [];
+        STATE.lotteryQueue = (STATE.lotteryQueue || []).filter(p => p.category !== category);
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
+
+    socket.on('admin:deleteCategory', ({ id }) => {
+        if (!id) return;
+        STATE.categories = (STATE.categories || []).filter(c => c.id !== id);
+        if (STATE.playersSnapshot) delete STATE.playersSnapshot[id];
+        STATE.lotteryQueue = (STATE.lotteryQueue || []).filter(p => p.category !== id);
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
+
     socket.on('admin:updateConfig', (newConfig) => {
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
             STATE.teams = newConfig.teams.map(nt => {
                 const ot = (STATE.teams || []).find(t => t.id === nt.id); 
                 return { ...nt, purchases: ot && ot.purchases ? ot.purchases : {}, impactActive: ot ? ot.impactActive : false, rtmUsed: ot ? ot.rtmUsed : false };
             });
+        }
+        if (newConfig.impactAmount !== undefined) {
+            if (!STATE.config) STATE.config = {};
+            STATE.config.impactAmount = Number(newConfig.impactAmount) || 0;
         }
         if (newConfig.categories) STATE.categories = newConfig.categories;
         io.emit('state:updated', STATE);
