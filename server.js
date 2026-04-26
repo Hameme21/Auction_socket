@@ -443,6 +443,15 @@ io.on('connection', (socket) => {
     });
 
     // Clean up
+    socket.on('admin:setTeamLogo', ({ teamId, logoUrl }) => {
+        if (!teamId || !logoUrl) return;
+        const team = STATE.teams.find(t => t.id === teamId);
+        if (!team) return;
+        team.logo = logoUrl;
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
+
     socket.on('admin:updateConfig', (newConfig) => {
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
             STATE.teams = newConfig.teams.map(nt => {
