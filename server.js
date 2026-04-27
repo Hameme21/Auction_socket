@@ -50,7 +50,7 @@ const DOC_REF = db.collection('auction_data').doc('current_state');
 
 let STATE = { 
     teams: [], categories: [], playersSnapshot: {}, activeBids: {}, activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, rtmEvents: {}, rtmImpactLocks: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }, rtmState: null,
-    lotteryQueue: [], unsoldPlayers: {}, biddingActive: false
+    lotteryQueue: [], unsoldPlayers: {}, biddingActive: false, codeShuffleActive: false
 };
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
@@ -137,6 +137,7 @@ async function loadFromFirebase() {
             if (!STATE.lotteryQueue) STATE.lotteryQueue = [];
             if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
             if (STATE.biddingActive === undefined) STATE.biddingActive = false;
+            if (STATE.codeShuffleActive === undefined) STATE.codeShuffleActive = false;
         } else { await immediateSaveToFirebase(); } 
     } catch (e) { console.log("Firebase Load Error:", e); } 
 }
@@ -311,11 +312,18 @@ io.on('connection', (socket) => {
         pool = pool.sort(() => Math.random() - 0.5);
         unsoldPool = unsoldPool.sort(() => Math.random() - 0.5);
         STATE.lotteryQueue = [...pool, ...unsoldPool];
+        STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         io.emit('state:updated', STATE);
         immediateSaveToFirebase();
     };
     socket.on('admin:shuffle_codes', shuffleCodes);
     socket.on('admin:generate_lottery', shuffleCodes);
+    socket.on('admin:reset_codes', () => {
+        STATE.lotteryQueue = [];
+        STATE.codeShuffleActive = false;
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
 
     socket.on('admin:start_bidding', () => {
         STATE.biddingActive = true;
@@ -358,8 +366,20 @@ io.on('connection', (socket) => {
 
     socket.on('admin:import_previous', ({ teamId, players }) => {
         if (!STATE.previousOwners) STATE.previousOwners = {};
-        players.forEach(p => { STATE.previousOwners[`${p.catId}:${p.name}`] = teamId; });
+        let added = 0, skipped = 0;
+        players.forEach(p => {
+            const key = `${p.catId}:${p.name}`;
+            const currentOwner = STATE.previousOwners[key];
+            if (currentOwner && currentOwner !== teamId) {
+                skipped++;
+                return;
+            }
+            STATE.previousOwners[key] = teamId;
+            added++;
+        });
         io.emit('state:updated', STATE);
+        if (skipped) io.emit('admin:toast', { msg: `Skipped ${skipped} player(s) already tagged to another team` });
+        if (added) io.emit('admin:toast', { msg: `Tagged ${added} player(s)` });
         debouncedSaveToFirebase();
     });
 
@@ -631,7 +651,7 @@ io.on('connection', (socket) => {
 
     socket.on('admin:resetAll', () => { 
         STATE.activeBids = {}; STATE.activeBidders = {}; STATE.previousOwners = {}; STATE.soldPrices = {}; STATE.directSigns = {}; STATE.rtmEvents = {}; STATE.rtmImpactLocks = {}; STATE.rtmState = null;
-        STATE.lotteryQueue = []; STATE.unsoldPlayers = {}; STATE.biddingActive = false;
+        STATE.lotteryQueue = []; STATE.unsoldPlayers = {}; STATE.biddingActive = false; STATE.codeShuffleActive = false;
         STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.directSignUsed = false; t.rtmUsed = false; }); 
         io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
     });
