@@ -394,7 +394,7 @@ io.on('connection', (socket) => {
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
             STATE.currentActivePlayer.currentPrice = validPrice;
         }
-        io.emit('player:bid', { ...data, price: validPrice });
+        io.emit('player:bid', { ...data, price: validPrice, highBidderId: STATE.activeBidders[key] });
         debouncedSaveToFirebase(); 
     });
 
