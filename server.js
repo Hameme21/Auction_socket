@@ -55,6 +55,12 @@ let STATE = {
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
 
+function pauseServerTimer() {
+    TIMER_STATE = { paused: true, time: TIMER_STATE.time };
+    clearInterval(serverTimerInterval);
+    io.emit('timer:sync', TIMER_STATE);
+}
+
 function codeSeed(category, name) {
     return `${category || ''}:${name || ''}`.toUpperCase();
 }
@@ -393,6 +399,7 @@ io.on('connection', (socket) => {
         if (!STATE.rtmImpactLocks) STATE.rtmImpactLocks = {};
         if (!STATE.rtmImpactLocks[key]) STATE.rtmImpactLocks[key] = {};
         STATE.rtmImpactLocks[key][rtmTeamId] = true;
+        pauseServerTimer();
         io.emit('state:updated', STATE);
         debouncedSaveToFirebase();
     });
@@ -521,6 +528,10 @@ io.on('connection', (socket) => {
     socket.on('player:bid', (data) => {
         const validPrice = Number(data.price);
         if (isNaN(validPrice) || validPrice < 0) return; 
+        if (data.teamId && TIMER_STATE.paused) {
+            socket.emit('admin:toast', { msg: '⏸️ Bidding is paused' });
+            return;
+        }
 
         const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
@@ -550,6 +561,7 @@ io.on('connection', (socket) => {
         const priceToMatch = validation.price;
 
         validation.team.rtmUsed = true;
+        pauseServerTimer();
         if (!STATE.rtmImpactLocks) STATE.rtmImpactLocks = {};
         if (!STATE.rtmImpactLocks[key]) STATE.rtmImpactLocks[key] = {};
         STATE.rtmImpactLocks[key][rtmTeamId] = true;
