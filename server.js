@@ -164,6 +164,9 @@ function validateRTMOffer({ category, name, rtmTeamId, rtmPrice }) {
     if (!cat) return { ok: false, msg: '❌ RTM Failed: category not found' };
     if (STATE.rtmState) return { ok: false, msg: '❌ RTM Failed: another RTM is already in progress' };
     if (team.rtmUsed) return { ok: false, msg: `❌ RTM Failed: ${team.name} already used RTM!` };
+    if (!STATE.previousOwners || STATE.previousOwners[key] !== rtmTeamId) {
+        return { ok: false, msg: `❌ RTM Failed: ${team.name} is not tagged to this player` };
+    }
     if (team.purchases && team.purchases[category]) {
         return { ok: false, msg: `❌ RTM Failed: ${team.name} already has a player from ${category}!` };
     }
@@ -385,8 +388,8 @@ io.on('connection', (socket) => {
 
     socket.on('rtm:lockImpact', ({ category, name, rtmTeamId }) => {
         const team = STATE.teams.find(t => t.id === rtmTeamId);
-        if (!team || team.rtmUsed || (team.purchases && team.purchases[category])) return;
         const key = `${category}:${name}`;
+        if (!team || team.rtmUsed || (team.purchases && team.purchases[category]) || !STATE.previousOwners || STATE.previousOwners[key] !== rtmTeamId) return;
         if (!STATE.rtmImpactLocks) STATE.rtmImpactLocks = {};
         if (!STATE.rtmImpactLocks[key]) STATE.rtmImpactLocks[key] = {};
         STATE.rtmImpactLocks[key][rtmTeamId] = true;
