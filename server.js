@@ -140,6 +140,56 @@ async function loadFromFirebase() {
     } catch (e) { console.log("Firebase Load Error:", e); } 
 }
 
+function getSaleReserve(team, activeCategory) {
+    return STATE.categories.reduce((total, cat) => {
+        if (cat.id !== activeCategory && (!team.purchases || !team.purchases[cat.id])) {
+            return total + (Number(cat.base) || 0);
+        }
+        return total;
+    }, 0);
+}
+
+function isRTMImpactLocked(teamId, category, name) {
+    const key = `${category}:${name}`;
+    const team = STATE.teams.find(t => t.id === teamId);
+    return !!team && !team.rtmUsed && STATE.previousOwners && STATE.previousOwners[key] === teamId;
+}
+
+function validateRTMOffer({ category, name, rtmTeamId, rtmPrice }) {
+    const key = `${category}:${name}`;
+    const team = STATE.teams.find(t => t.id === rtmTeamId);
+    const cat = STATE.categories.find(c => c.id === category);
+    if (!team) return { ok: false, msg: '❌ RTM Failed: team not found' };
+    if (!cat) return { ok: false, msg: '❌ RTM Failed: category not found' };
+    if (STATE.rtmState) return { ok: false, msg: '❌ RTM Failed: another RTM is already in progress' };
+    if (team.rtmUsed) return { ok: false, msg: `❌ RTM Failed: ${team.name} already used RTM!` };
+    if (!STATE.previousOwners || STATE.previousOwners[key] !== rtmTeamId) {
+        return { ok: false, msg: `❌ RTM Failed: ${team.name} is not eligible for this player` };
+    }
+    if (team.purchases && team.purchases[category]) {
+        return { ok: false, msg: `❌ RTM Failed: ${team.name} already has a player from ${category}!` };
+    }
+
+    const inc = Number(cat.increment) || 0;
+    if (inc <= 0) return { ok: false, msg: '❌ RTM Failed: category increment must be greater than 0' };
+
+    const currentBid = Number(STATE.activeBids && STATE.activeBids[key]) || Number(cat.base) || 0;
+    const price = Number(rtmPrice) || (currentBid + inc);
+    const diff = price - currentBid;
+    const isValidStep = diff > 0 && Math.abs((diff / inc) - Math.round(diff / inc)) < 0.000001;
+    if (!isValidStep) {
+        return { ok: false, msg: `❌ RTM Failed: amount must be greater than ৳${currentBid} in ৳${inc} steps` };
+    }
+
+    const reserve = getSaleReserve(team, category);
+    const maxOffer = Math.max(0, (Number(team.purse) || 0) - reserve);
+    if (price > maxOffer || Number(team.purse) < price) {
+        return { ok: false, msg: `❌ RTM Failed: ${team.name} can enforce up to ৳${maxOffer}` };
+    }
+
+    return { ok: true, team, price, currentBid, inc, maxOffer };
+}
+
 function executeSale(data) {
     const team = STATE.teams.find(t => t.id === data.teamId);
     const validPrice = Number(data.price) || 0;
@@ -150,12 +200,7 @@ function executeSale(data) {
             return false;
         }
 
-        let requiredReserve = 0;
-        STATE.categories.forEach(cat => {
-            if (cat.id !== data.category && (!team.purchases || !team.purchases[cat.id])) {
-                requiredReserve += Number(cat.base) || 0;
-            }
-        });
+        const requiredReserve = getSaleReserve(team, data.category);
 
         if ((Number(team.purse) - validPrice) < requiredReserve) {
             io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} lacks reserve purse!` });
@@ -318,6 +363,10 @@ io.on('connection', (socket) => {
     socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
         const team = STATE.teams.find(t => t.id === teamId);
         const bonus = Number(STATE.config.impactAmount) || 0;
+        if (isRTMImpactLocked(teamId, category, playerName)) {
+            io.emit('admin:toast', { msg: `⚡ Impact locked: ${team ? team.name : teamId} has RTM available for ${playerName}`, type: 'rtm' });
+            return;
+        }
         if (team && !team.impactUsed && !team.impactActive && bonus > 0) {
             team.purse = Number(team.purse) + bonus;
             team.impactActive = true;
@@ -401,17 +450,19 @@ io.on('connection', (socket) => {
     socket.on('player:sold', (data) => { executeSale(data); });
 
     // --- RTM Phase 1: Team Sets Price + Match High Bidder ---
-    socket.on('rtm:invoke', ({ category, name, rtmTeamId, manualHighBidderId }) => {
+    socket.on('rtm:invoke', ({ category, name, rtmTeamId, manualHighBidderId, rtmPrice }) => {
         const key = `${category}:${name}`;
+        const validation = validateRTMOffer({ category, name, rtmTeamId, rtmPrice });
+        if (!validation.ok) {
+            io.emit('admin:toast', { msg: validation.msg, type: 'rtm' });
+            return;
+        }
         const highBidder = manualHighBidderId || (STATE.activeBidders ? STATE.activeBidders[key] : null);
-        const currentBid = STATE.activeBids ? STATE.activeBids[key] : null;
-        const cat = STATE.categories.find(c => c.id === category);
-        const inc = Number(cat?.increment) || 0;
-        
-        const base = Number(cat?.base) || 0;
-        const priceToMatch = (Number(currentBid) || 0) === 0 ? base : (Number(currentBid) + inc);
+        const priceToMatch = validation.price;
 
-        // If no one else has bid, sell it directly to the RTM team at base
+        validation.team.rtmUsed = true;
+
+        // If no one else has bid, sell it directly to the RTM team at their chosen RTM amount.
         if (!highBidder || highBidder === rtmTeamId) {
             executeSale({ category, name, price: priceToMatch, teamId: rtmTeamId, isDirect: true, isRTM: true });
             return;
@@ -435,7 +486,8 @@ io.on('connection', (socket) => {
 
         if (accept) {
             // Original high bidder matched the new price
-            executeSale({ category, name, price: newPrice, teamId: originalTeamId, isDirect: false, isRTM: false });
+            const matched = executeSale({ category, name, price: newPrice, teamId: originalTeamId, isDirect: false, isRTM: false });
+            if (!matched) executeSale({ category, name, price: newPrice, teamId: rtmTeamId, isDirect: true, isRTM: true });
         } else {
             // Original bidder declined, RTM Team wins it at the new price
             executeSale({ category, name, price: newPrice, teamId: rtmTeamId, isDirect: true, isRTM: true });
