@@ -54,6 +54,7 @@ let STATE = {
 };
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
+const PLAYER_REVEAL_DELAY_MS = 350;
 
 function pauseServerTimer() {
     TIMER_STATE = { paused: true, time: TIMER_STATE.time };
@@ -507,11 +508,13 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:select_player', (playerData) => { 
-        STATE.currentActivePlayer = playerData; 
+        const revealStartedAt = playerData.revealCode ? Date.now() + PLAYER_REVEAL_DELAY_MS : null;
+        const selectedPlayer = { ...playerData, revealStartedAt };
+        STATE.currentActivePlayer = selectedPlayer;
         STATE.biddingActive = false;
         TIMER_STATE = { paused: true, time: 30 }; 
         clearInterval(serverTimerInterval);
-        io.emit('popup:open', playerData); 
+        io.emit('popup:open', selectedPlayer);
         io.emit('timer:sync', TIMER_STATE);
         immediateSaveToFirebase(); 
     });
