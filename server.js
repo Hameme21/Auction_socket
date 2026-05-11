@@ -324,6 +324,7 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = [...pool, ...unsoldPool];
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         io.emit('state:updated', STATE);
+        io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
         immediateSaveToFirebase();
     };
     socket.on('admin:shuffle_codes', shuffleCodes);
@@ -668,9 +669,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:resetAll', () => { 
-        STATE.activeBids = {}; STATE.activeBidders = {}; STATE.previousOwners = {}; STATE.soldPrices = {}; STATE.directSigns = {}; STATE.rtmEvents = {}; STATE.rtmImpactLocks = {}; STATE.rtmState = null;
+        STATE.activeBids = {}; STATE.activeBidders = {}; STATE.previousOwners = {}; STATE.soldPrices = {}; STATE.directSigns = {}; STATE.rtmEvents = {}; STATE.rtmImpactLocks = {}; STATE.rtmState = null; STATE.currentActivePlayer = null;
         STATE.lotteryQueue = []; STATE.unsoldPlayers = {}; STATE.biddingActive = false; STATE.codeShuffleActive = false;
+        TIMER_STATE = { paused: false, time: 30 };
+        clearInterval(serverTimerInterval);
         STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.directSignUsed = false; t.rtmUsed = false; }); 
+        io.emit('popup:close');
+        io.emit('timer:sync', TIMER_STATE);
+        io.emit('rtm:cleared');
         io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
     });
 });
