@@ -33,7 +33,7 @@ const upload = multer({ storage: storage });
 
 app.use('/uploads', express.static(uploadDir));
 
-app.get('/', (req, res) => res.status(200).send('Auction Socket Server is running smoothly!'));
+app.get('/', (req, res) => res.status(200).send('<h1>Auction Socket Server is running smoothly!</h1>'));
 
 try {
   admin.initializeApp({
