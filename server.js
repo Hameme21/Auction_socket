@@ -681,12 +681,4 @@ io.on('connection', (socket) => {
     });
 });
 
-// 1. Always export the server so Vercel can route incoming requests to it
-module.exports = server;
-
-// 2. Only execute server.listen() when running locally on your computer
-if (process.env.NODE_ENV !== 'production') {
-  loadFromFirebase().then(() => {
-    server.listen(PORT, () => console.log(`Running on ${PORT}`));
-  });
-}
+loadFromFirebase().then(() => {server.listen(PORT, () => console.log("Running on ${PORT})); });
