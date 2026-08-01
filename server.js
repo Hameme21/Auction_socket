@@ -259,7 +259,8 @@ if (admin.apps.length > 0) {
 
 let STATE = { 
     teams: [], categories: [], playersSnapshot: {}, activeBids: {}, activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, rtmEvents: {}, rtmImpactLocks: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }, rtmState: null,
-    lotteryQueue: [], unsoldPlayers: {}, biddingActive: false, codeShuffleActive: false
+    lotteryQueue: [], unsoldPlayers: {}, biddingActive: false, codeShuffleActive: false,
+    schedule: { teamNumbers: {}, matches: [] }
 };
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
@@ -354,6 +355,7 @@ async function loadFromFirebase() {
             if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
             if (STATE.biddingActive === undefined) STATE.biddingActive = false;
             if (STATE.codeShuffleActive === undefined) STATE.codeShuffleActive = false;
+            if (!STATE.schedule) STATE.schedule = { teamNumbers: {}, matches: [] };
         } else { await immediateSaveToFirebase(); } 
     } catch (e) { console.log("Firebase Load Error:", e); } 
 }
@@ -887,6 +889,22 @@ io.on('connection', (socket) => {
         io.emit('timer:sync', TIMER_STATE);
         io.emit('rtm:cleared');
         io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
+    });
+
+    socket.on('schedule:save', (scheduleData) => {
+        STATE.schedule = scheduleData || { teamNumbers: {}, matches: [] };
+        io.emit('state:updated', STATE);
+        io.emit('schedule:updated', STATE.schedule);
+        io.emit('admin:toast', { msg: 'Tournament schedule updated & published!' });
+        immediateSaveToFirebase();
+    });
+
+    socket.on('schedule:reset', () => {
+        STATE.schedule = { teamNumbers: {}, matches: [] };
+        io.emit('state:updated', STATE);
+        io.emit('schedule:updated', STATE.schedule);
+        io.emit('admin:toast', { msg: 'Tournament schedule reset' });
+        immediateSaveToFirebase();
     });
 });
 
