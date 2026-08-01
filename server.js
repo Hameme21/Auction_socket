@@ -35,18 +35,49 @@ app.use('/uploads', express.static(uploadDir));
 
 app.get('/', (req, res) => res.status(200).send('<h1>Auction Socket Server is running smoothly!</h1>'));
 
+let db = null;
+let DOC_REF = null;
+
 try {
-  admin.initializeApp({
-    credential: admin.credential.cert({
+  let credential;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      credential = admin.credential.cert(sa);
+    } catch (_) {
+      if (fs.existsSync(process.env.FIREBASE_SERVICE_ACCOUNT)) {
+        credential = admin.credential.cert(require(process.env.FIREBASE_SERVICE_ACCOUNT));
+      }
+    }
+  } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    credential = admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
-    }),
-  });
-} catch (error) { console.error("Firebase initialization error:", error); }
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    });
+  }
 
-const db = admin.firestore();
-const DOC_REF = db.collection('auction_data').doc('current_state');
+  if (credential) {
+    admin.initializeApp({ credential });
+  } else if (admin.apps.length === 0) {
+    try {
+      admin.initializeApp();
+    } catch (_) {}
+  }
+} catch (error) {
+  console.error("Firebase initialization error:", error.message);
+}
+
+if (admin.apps.length > 0) {
+  db = admin.firestore();
+  DOC_REF = db.collection('auction_data').doc('current_state');
+} else {
+  console.warn("⚠️ Firebase credentials missing or invalid. Running in in-memory state mode.");
+  DOC_REF = {
+    get: async () => ({ exists: false, data: () => null }),
+    set: async (data) => {}
+  };
+}
 
 let STATE = { 
     teams: [], categories: [], playersSnapshot: {}, activeBids: {}, activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, rtmEvents: {}, rtmImpactLocks: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }, rtmState: null,
@@ -681,4 +712,4 @@ io.on('connection', (socket) => {
     });
 });
 
-loadFromFirebase().then(() => {server.listen(PORT, () => console.log("Running on ${PORT})); });
+loadFromFirebase().then(() => { server.listen(PORT, () => console.log(`Running on ${PORT}`)); });
