@@ -541,8 +541,10 @@ io.on('connection', (socket) => {
     socket.on('admin:shuffle_codes', shuffleCodes);
     socket.on('admin:generate_lottery', shuffleCodes);
     socket.on('admin:reset_codes', () => {
+        STATE.currentActivePlayer = null;
         STATE.lotteryQueue = [];
         STATE.codeShuffleActive = false;
+        io.emit('popup:close');
         io.emit('state:updated', STATE);
         immediateSaveToFirebase();
     });
@@ -586,6 +588,49 @@ io.on('connection', (socket) => {
         immediateSaveToFirebase();
     });
 
+    socket.on('admin:save_team_rtm', ({ teamId, selectedPlayers }) => {
+        if (!teamId || !Array.isArray(selectedPlayers)) return;
+        if (!STATE.previousOwners) STATE.previousOwners = {};
+
+        // Remove previous RTM tags assigned to this team
+        Object.keys(STATE.previousOwners).forEach(key => {
+            if (STATE.previousOwners[key] === teamId) delete STATE.previousOwners[key];
+        });
+
+        // Add the selected RTM tags
+        selectedPlayers.forEach(p => {
+            if (p.catId && p.name) {
+                STATE.previousOwners[`${p.catId}:${p.name}`] = teamId;
+            }
+        });
+
+        io.emit('state:updated', STATE);
+        io.emit('admin:toast', { msg: `RTM tags updated & saved` });
+        immediateSaveToFirebase();
+    });
+
+    socket.on('admin:set_previous_owners', ({ previousOwners }) => {
+        if (typeof previousOwners === 'object' && previousOwners !== null) {
+            STATE.previousOwners = previousOwners;
+            io.emit('state:updated', STATE);
+            immediateSaveToFirebase();
+        }
+    });
+
+    socket.on('admin:remove_previous', ({ teamId, players, previousOwners }) => {
+        if (previousOwners && typeof previousOwners === 'object') {
+            STATE.previousOwners = previousOwners;
+        } else if (teamId && Array.isArray(players)) {
+            if (!STATE.previousOwners) STATE.previousOwners = {};
+            players.forEach(p => {
+                const key = `${p.catId}:${p.name}`;
+                if (STATE.previousOwners[key] === teamId) delete STATE.previousOwners[key];
+            });
+        }
+        io.emit('state:updated', STATE);
+        immediateSaveToFirebase();
+    });
+
     socket.on('admin:import_previous', ({ teamId, players }) => {
         if (!STATE.previousOwners) STATE.previousOwners = {};
         let added = 0, skipped = 0;
@@ -602,7 +647,7 @@ io.on('connection', (socket) => {
         io.emit('state:updated', STATE);
         if (skipped) io.emit('admin:toast', { msg: `Skipped ${skipped} player(s) already tagged to another team` });
         if (added) io.emit('admin:toast', { msg: `Tagged ${added} player(s)` });
-        debouncedSaveToFirebase();
+        immediateSaveToFirebase();
     });
 
     socket.on('rtm:lockImpact', ({ category, name, rtmTeamId }) => {
@@ -875,6 +920,7 @@ io.on('connection', (socket) => {
             STATE.config.impactAmount = Number(newConfig.impactAmount) || 0;
         }
         if (newConfig.categories) STATE.categories = newConfig.categories;
+        if (newConfig.previousOwners !== undefined) STATE.previousOwners = newConfig.previousOwners;
         io.emit('state:updated', STATE);
         immediateSaveToFirebase();
     });
