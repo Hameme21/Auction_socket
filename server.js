@@ -265,7 +265,6 @@ let STATE = {
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
 const PLAYER_REVEAL_DELAY_MS = 350;
-const PLAYER_REVEAL_LOCK_MS = 4700;
 
 function pauseServerTimer() {
     TIMER_STATE = { paused: true, time: TIMER_STATE.time };
@@ -467,6 +466,9 @@ function executeSale(data) {
         STATE.biddingActive = false;
         TIMER_STATE = { paused: false, time: 30 }; 
         clearInterval(serverTimerInterval);
+        if (STATE.lotteryQueue && Array.isArray(STATE.lotteryQueue)) {
+            STATE.lotteryQueue = STATE.lotteryQueue.filter(p => !(p.category === data.category && p.name === data.name));
+        }
         io.emit('popup:close');
         io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
         immediateSaveToFirebase();
@@ -528,11 +530,20 @@ io.on('connection', (socket) => {
         }
     });
     
+    function fisherYatesShuffle(array) {
+        const arr = [...array];
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    }
+
     // --- CODE SHUFFLE CONTROLS ---
     const shuffleCodes = () => {
         let { pool, unsoldPool } = buildShufflePool();
-        pool = pool.sort(() => Math.random() - 0.5);
-        unsoldPool = unsoldPool.sort(() => Math.random() - 0.5);
+        pool = fisherYatesShuffle(pool);
+        unsoldPool = fisherYatesShuffle(unsoldPool);
         STATE.lotteryQueue = [...pool, ...unsoldPool];
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         io.emit('state:updated', STATE);
@@ -766,13 +777,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:select_player', (playerData) => { 
-        if (playerData.revealCode && STATE.currentActivePlayer && STATE.currentActivePlayer.revealCode) {
-            const activeRevealStartedAt = Number(STATE.currentActivePlayer.revealStartedAt) || Date.now();
-            if (Date.now() < activeRevealStartedAt + PLAYER_REVEAL_LOCK_MS) {
-                socket.emit('admin:toast', { msg: 'Reveal already in progress' });
-                return;
-            }
-        }
         const revealStartedAt = playerData.revealCode ? Date.now() + PLAYER_REVEAL_DELAY_MS : null;
         const selectedPlayer = { ...playerData, revealStartedAt };
         STATE.currentActivePlayer = selectedPlayer;
