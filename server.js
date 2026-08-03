@@ -546,16 +546,52 @@ io.on('connection', (socket) => {
         unsoldPool = fisherYatesShuffle(unsoldPool);
         STATE.lotteryQueue = [...pool, ...unsoldPool];
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
+        STATE.unsoldRoundActive = false;
         io.emit('state:updated', STATE);
         io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
         immediateSaveToFirebase();
     };
+
+    const shuffleUnsoldCodes = () => {
+        let { unsoldPool } = buildShufflePool();
+        if (!unsoldPool.length) {
+            STATE.categories.forEach(cat => {
+                const players = STATE.playersSnapshot[cat.id] || [];
+                players.forEach(p => {
+                    const key = `${cat.id}:${p.name}`;
+                    let isSold = false;
+                    STATE.teams.forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
+                    if (!isSold && STATE.unsoldPlayers?.[key] && !unsoldPool.some(u => u.category === cat.id && u.name === p.name)) {
+                        const usedCodes = new Set(unsoldPool.map(u => u.code));
+                        unsoldPool.push({
+                            category: cat.id,
+                            name: p.name,
+                            base: cat.base,
+                            image: p.image,
+                            code: makePlayerCode(cat.id, p.name, usedCodes),
+                            isUnsold: true
+                        });
+                    }
+                });
+            });
+        }
+        unsoldPool = fisherYatesShuffle(unsoldPool);
+        STATE.lotteryQueue = unsoldPool;
+        STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
+        STATE.unsoldRoundActive = true;
+        io.emit('state:updated', STATE);
+        io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer, isUnsoldRound: true });
+        immediateSaveToFirebase();
+    };
+
     socket.on('admin:shuffle_codes', shuffleCodes);
     socket.on('admin:generate_lottery', shuffleCodes);
+    socket.on('admin:shuffle_unsold', shuffleUnsoldCodes);
     socket.on('admin:reset_codes', () => {
         STATE.currentActivePlayer = null;
         STATE.lotteryQueue = [];
         STATE.codeShuffleActive = false;
+        STATE.unsoldRoundActive = false;
         io.emit('popup:close');
         io.emit('state:updated', STATE);
         immediateSaveToFirebase();
