@@ -265,6 +265,7 @@ let STATE = {
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
 const PLAYER_REVEAL_DELAY_MS = 350;
+const PLAYER_REVEAL_LOCK_MS = 4700;
 
 function pauseServerTimer() {
     TIMER_STATE = { paused: true, time: TIMER_STATE.time };
@@ -765,6 +766,13 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin:select_player', (playerData) => { 
+        if (playerData.revealCode && STATE.currentActivePlayer && STATE.currentActivePlayer.revealCode) {
+            const activeRevealStartedAt = Number(STATE.currentActivePlayer.revealStartedAt) || Date.now();
+            if (Date.now() < activeRevealStartedAt + PLAYER_REVEAL_LOCK_MS) {
+                socket.emit('admin:toast', { msg: 'Reveal already in progress' });
+                return;
+            }
+        }
         const revealStartedAt = playerData.revealCode ? Date.now() + PLAYER_REVEAL_DELAY_MS : null;
         const selectedPlayer = { ...playerData, revealStartedAt };
         STATE.currentActivePlayer = selectedPlayer;
