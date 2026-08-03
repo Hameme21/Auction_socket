@@ -787,24 +787,62 @@ io.on('connection', (socket) => {
 
     socket.on('player:bid', (data) => {
         const validPrice = Number(data.price);
-        if (isNaN(validPrice) || validPrice < 0) return; 
-        if (data.teamId && TIMER_STATE.paused) {
-            socket.emit('admin:toast', { msg: '⏸️ Bidding is paused' });
+        if (isNaN(validPrice) || validPrice <= 0) return;
+
+        const key = `${data.category}:${data.name}`;
+        const team = data.teamId ? STATE.teams.find(t => t.id === data.teamId) : null;
+
+        // Team bid validation
+        if (data.teamId) {
+            if (!STATE.biddingActive) {
+                socket.emit('admin:toast', { msg: '⚠️ Bidding has not started yet' });
+                return;
+            }
+            if (TIMER_STATE.paused) {
+                socket.emit('admin:toast', { msg: '⏸️ Bidding is currently paused' });
+                return;
+            }
+            if (!team) {
+                socket.emit('admin:toast', { msg: '❌ Franchise not found' });
+                return;
+            }
+            if (Number(team.purse) < validPrice) {
+                socket.emit('admin:toast', { msg: `❌ Insufficient purse balance (Purse: ৳${team.purse})` });
+                return;
+            }
+            const reserve = getSaleReserve(team, data.category);
+            if ((Number(team.purse) - validPrice) < reserve) {
+                socket.emit('admin:toast', { msg: `❌ Must reserve ৳${reserve} for remaining required slots!` });
+                return;
+            }
+        }
+
+        const currentTopBid = Number(STATE.activeBids && STATE.activeBids[key]) || 0;
+        if (validPrice <= currentTopBid && data.teamId) {
+            socket.emit('admin:toast', { msg: `⚠️ Bid must be higher than current bid (৳${currentTopBid})` });
             return;
         }
 
-        const key = `${data.category}:${data.name}`;
         if (!STATE.activeBids) STATE.activeBids = {};
         if (!STATE.activeBidders) STATE.activeBidders = {};
 
         STATE.activeBids[key] = validPrice;
         STATE.activeBidders[key] = data.teamId ? data.teamId : null;
-        
+
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
             STATE.currentActivePlayer.currentPrice = validPrice;
         }
-        io.emit('player:bid', { ...data, price: validPrice, highBidderId: STATE.activeBidders[key] });
-        debouncedSaveToFirebase(); 
+
+        // Auto-extend timer by 15s if under 12s on new valid bid
+        if (STATE.biddingActive && !TIMER_STATE.paused) {
+            if (TIMER_STATE.time < 12) {
+                TIMER_STATE.time = 15;
+                io.emit('timer:sync', TIMER_STATE);
+            }
+        }
+
+        io.emit('player:bid', { ...data, price: validPrice, highBidderId: STATE.activeBidders[key], teamName: team ? team.name : 'Admin' });
+        debouncedSaveToFirebase();
     });
 
     socket.on('player:sold', (data) => { executeSale(data); });
