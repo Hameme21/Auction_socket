@@ -541,10 +541,9 @@ io.on('connection', (socket) => {
 
     // --- CODE SHUFFLE CONTROLS ---
     const shuffleCodes = () => {
-        let { pool, unsoldPool } = buildShufflePool();
+        let { pool } = buildShufflePool();
         pool = fisherYatesShuffle(pool);
-        unsoldPool = fisherYatesShuffle(unsoldPool);
-        STATE.lotteryQueue = [...pool, ...unsoldPool];
+        STATE.lotteryQueue = pool;
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         STATE.unsoldRoundActive = false;
         io.emit('state:updated', STATE);
@@ -615,14 +614,16 @@ io.on('connection', (socket) => {
         if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
         STATE.unsoldPlayers[key] = true;
         
-        // Push the unsold player to the END of the lottery queue so they appear last
+        // Filter unsold player from lotteryQueue during regular round so they wait for the Unsold Round
         if (STATE.lotteryQueue) {
             STATE.lotteryQueue = STATE.lotteryQueue.filter(p => !(p.category === category && p.name === name));
-            const cat = STATE.categories.find(c => c.id === category);
-            const pObj = (STATE.playersSnapshot[category] || []).find(p => p.name === name);
-            if (cat && pObj) {
-                const usedCodes = new Set(STATE.lotteryQueue.map(p => p.code).filter(Boolean));
-                STATE.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, code: makePlayerCode(cat.id, pObj.name, usedCodes), isUnsold: true });
+            if (STATE.unsoldRoundActive) {
+                const cat = STATE.categories.find(c => c.id === category);
+                const pObj = (STATE.playersSnapshot[category] || []).find(p => p.name === name);
+                if (cat && pObj) {
+                    const usedCodes = new Set(STATE.lotteryQueue.map(p => p.code).filter(Boolean));
+                    STATE.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, code: makePlayerCode(cat.id, pObj.name, usedCodes), isUnsold: true });
+                }
             }
         }
 
