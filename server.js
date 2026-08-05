@@ -817,10 +817,22 @@ io.on('connection', (socket) => {
         const revealStartedAt = playerData.revealCode ? Date.now() + PLAYER_REVEAL_DELAY_MS : null;
         const selectedPlayer = { ...playerData, revealStartedAt };
         STATE.currentActivePlayer = selectedPlayer;
-        STATE.biddingActive = false;
-        TIMER_STATE = { paused: true, time: 30 }; 
+        
+        const isUnsoldMode = !!(playerData.isUnsold || STATE.unsoldRoundActive);
+        STATE.biddingActive = true;
+        TIMER_STATE = { paused: isUnsoldMode, time: 30 };
         clearInterval(serverTimerInterval);
+
+        if (!isUnsoldMode) {
+            serverTimerInterval = setInterval(() => {
+                TIMER_STATE.time--;
+                io.emit('timer:sync', TIMER_STATE);
+                if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
+            }, 1000);
+        }
+
         io.emit('popup:open', selectedPlayer);
+        io.emit('bidding:started');
         io.emit('timer:sync', TIMER_STATE);
         immediateSaveToFirebase(); 
     });
@@ -893,6 +905,40 @@ io.on('connection', (socket) => {
         }
 
         io.emit('player:bid', { ...data, price: validPrice, highBidderId: STATE.activeBidders[key], teamName: team ? team.name : 'Admin' });
+        
+        // AUTO-SELL CHECK:
+        // If a team who has NOT bought anything from this category bids for this player,
+        // AND this player is the last remaining player in this category (or unfulfilled teams <= 1):
+        if (data.teamId && team && !team.purchases?.[data.category]) {
+            const categoryId = data.category;
+            const categoryPlayers = (STATE.playersSnapshot[categoryId] || []);
+            let unacquiredCount = 0;
+            categoryPlayers.forEach(p => {
+                let sold = false;
+                STATE.teams.forEach(t => { if (t.purchases && t.purchases[categoryId] === p.name) sold = true; });
+                if (!sold) unacquiredCount++;
+            });
+            const unfulfilledTeamsForCat = STATE.teams.filter(t => !t.purchases?.[categoryId]);
+
+            const isLastPlayerInCategory = unacquiredCount <= 1;
+            const isSingleUnfulfilledTeam = unfulfilledTeamsForCat.length <= 1;
+
+            if (isLastPlayerInCategory || isSingleUnfulfilledTeam) {
+                const soldSuccess = executeSale({
+                    category: data.category,
+                    name: data.name,
+                    price: validPrice,
+                    teamId: data.teamId,
+                    isDirect: false,
+                    isRTM: false
+                });
+                if (soldSuccess) {
+                    io.emit('admin:toast', { msg: `⚡ AUTO-SOLD: ${data.name} to ${team.name} @ ৳${validPrice}!` });
+                    return;
+                }
+            }
+        }
+
         debouncedSaveToFirebase();
     });
 
