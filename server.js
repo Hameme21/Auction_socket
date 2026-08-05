@@ -867,7 +867,9 @@ io.on('connection', (socket) => {
         }
 
         const currentTopBid = Number(STATE.activeBids && STATE.activeBids[key]) || 0;
-        if (validPrice <= currentTopBid && data.teamId) {
+        const currentTopBidder = STATE.activeBidders ? STATE.activeBidders[key] : null;
+
+        if (currentTopBidder && validPrice <= currentTopBid && data.teamId) {
             socket.emit('admin:toast', { msg: `⚠️ Bid must be higher than current bid (৳${currentTopBid})` });
             return;
         }
