@@ -1043,6 +1043,79 @@ io.on('connection', (socket) => {
         immediateSaveToFirebase();
     });
 
+    socket.on('admin:move_player_category', ({ sourceCategory, targetCategory, playerName }) => {
+        if (!sourceCategory || !targetCategory || !playerName || sourceCategory === targetCategory) return;
+        if (!STATE.playersSnapshot[sourceCategory] || !STATE.playersSnapshot[targetCategory]) return;
+        
+        const index = STATE.playersSnapshot[sourceCategory].findIndex(p => p.name === playerName);
+        if (index === -1) return;
+        
+        const [movedPlayer] = STATE.playersSnapshot[sourceCategory].splice(index, 1);
+        movedPlayer.category = targetCategory;
+        const targetCatObj = (STATE.categories || []).find(c => c.id === targetCategory);
+        if (targetCatObj) {
+            movedPlayer.base = targetCatObj.base || movedPlayer.base;
+        }
+        STATE.playersSnapshot[targetCategory].push(movedPlayer);
+
+        const oldKey = `${sourceCategory}:${playerName}`;
+        const newKey = `${targetCategory}:${playerName}`;
+
+        if (STATE.previousOwners && STATE.previousOwners[oldKey]) {
+            STATE.previousOwners[newKey] = STATE.previousOwners[oldKey];
+            delete STATE.previousOwners[oldKey];
+        }
+        if (STATE.activeBids && STATE.activeBids[oldKey] !== undefined) {
+            STATE.activeBids[newKey] = STATE.activeBids[oldKey];
+            delete STATE.activeBids[oldKey];
+        }
+        if (STATE.activeBidders && STATE.activeBidders[oldKey]) {
+            STATE.activeBidders[newKey] = STATE.activeBidders[oldKey];
+            delete STATE.activeBidders[oldKey];
+        }
+        if (STATE.soldPrices && STATE.soldPrices[oldKey] !== undefined) {
+            STATE.soldPrices[newKey] = STATE.soldPrices[oldKey];
+            delete STATE.soldPrices[oldKey];
+        }
+        if (STATE.directSigns && STATE.directSigns[oldKey]) {
+            STATE.directSigns[newKey] = true;
+            delete STATE.directSigns[oldKey];
+        }
+        if (STATE.rtmEvents && STATE.rtmEvents[oldKey]) {
+            STATE.rtmEvents[newKey] = true;
+            delete STATE.rtmEvents[oldKey];
+        }
+        if (STATE.unsoldPlayers && STATE.unsoldPlayers[oldKey]) {
+            STATE.unsoldPlayers[newKey] = true;
+            delete STATE.unsoldPlayers[oldKey];
+        }
+
+        STATE.teams.forEach(t => {
+            if (t.purchases && t.purchases[sourceCategory] === playerName) {
+                delete t.purchases[sourceCategory];
+                t.purchases[targetCategory] = playerName;
+            }
+        });
+
+        if (STATE.lotteryQueue && Array.isArray(STATE.lotteryQueue)) {
+            STATE.lotteryQueue.forEach(qp => {
+                if (qp.category === sourceCategory && qp.name === playerName) {
+                    qp.category = targetCategory;
+                    if (targetCatObj) qp.base = targetCatObj.base;
+                }
+            });
+        }
+
+        if (STATE.currentActivePlayer && STATE.currentActivePlayer.category === sourceCategory && STATE.currentActivePlayer.name === playerName) {
+            STATE.currentActivePlayer.category = targetCategory;
+            if (targetCatObj) STATE.currentActivePlayer.base = targetCatObj.base;
+        }
+
+        io.emit('state:updated', STATE);
+        io.emit('admin:toast', { msg: `🚚 Moved ${playerName} to ${targetCategory}` });
+        immediateSaveToFirebase();
+    });
+
     socket.on('admin:updateConfig', (newConfig) => {
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
             STATE.teams = newConfig.teams.map(nt => {
