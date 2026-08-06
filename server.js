@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const allowedOrigin = process.env.FRONTEND_URL || "*";
 
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Origin", allowedOrigin);
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     if (req.method === 'OPTIONS') {
@@ -23,15 +23,10 @@ app.use((req, res, next) => {
 const io = new Server(server, { cors: { origin: allowedOrigin, methods: ["GET", "POST"] }});
 
 const PORT = process.env.PORT || 3000;
-const uploadDir = path.join(__dirname, 'public/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_'))
-});
-const upload = multer({ storage: storage });
 
-app.use('/uploads', express.static(uploadDir));
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ ok: true, status: 'Server is running', service: 'Auction Socket Backend', uptime: Math.floor(process.uptime()), timestamp: Date.now() });
+});
 
 app.get('/', (req, res) => {
     const isFirebaseConnected = admin.apps.length > 0;
@@ -262,6 +257,20 @@ let STATE = {
     lotteryQueue: [], unsoldPlayers: {}, biddingActive: false, codeShuffleActive: false,
     schedule: { teamNumbers: {}, matches: [] }
 };
+
+function publicState(state) {
+    if (!state) return state;
+    const { managers, ...safe } = state;
+    if (safe.teams && Array.isArray(safe.teams)) {
+        safe.teams = safe.teams.map(t => {
+            if (!t) return t;
+            const { password, ...safeTeam } = t;
+            return safeTeam;
+        });
+    }
+    return safe;
+}
+
 let TIMER_STATE = { paused: false, time: 30 };
 let serverTimerInterval = null;
 const PLAYER_REVEAL_DELAY_MS = 350;
@@ -489,7 +498,7 @@ io.on('connection', (socket) => {
         if (STATE.managers && STATE.managers[username] === password) {
             socket.data.role = 'admin';
             socket.data.teamId = null;
-            socket.emit('manager:logged_in', { username, state: STATE });
+            socket.emit('manager:logged_in', { username, state: publicState(STATE) });
         }
         else socket.emit('auth:portal_error', 'Invalid Creds');
     });
@@ -505,7 +514,8 @@ io.on('connection', (socket) => {
 
     socket.on('participant:connect', (hostId) => {
         if (!STATE.managers || !STATE.managers[hostId]) return socket.emit('auth:portal_error', 'Host Not Found');
-        socket.emit('init:teams_available', { hostId, teams: STATE.teams || [] });
+        const safeTeams = (STATE.teams || []).map(({ password, ...t }) => t);
+        socket.emit('init:teams_available', { hostId, teams: safeTeams });
     });
 
     socket.on('team:login', ({ teamId, password, role }) => {
@@ -513,7 +523,7 @@ io.on('connection', (socket) => {
         if (role === 'team' && (!team || team.password !== password)) return socket.emit('auth:team_error', 'Bad Pass');
         socket.data.role = role;
         socket.data.teamId = teamId || null;
-        socket.emit('auction:enter', { role, teamId, state: STATE });
+        socket.emit('auction:enter', { role, teamId, state: publicState(STATE) });
     });
 
     socket.on('admin:timer_control', (data) => {
@@ -546,7 +556,7 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = pool;
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         STATE.unsoldRoundActive = false;
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
         immediateSaveToFirebase();
     };
@@ -578,7 +588,7 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = unsoldPool;
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         STATE.unsoldRoundActive = true;
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer, isUnsoldRound: true });
         immediateSaveToFirebase();
     };
@@ -592,7 +602,7 @@ io.on('connection', (socket) => {
         STATE.codeShuffleActive = false;
         STATE.unsoldRoundActive = false;
         io.emit('popup:close');
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -633,7 +643,7 @@ io.on('connection', (socket) => {
         clearInterval(serverTimerInterval);
         io.emit('popup:close');
         io.emit('player:unsold', { category, name });
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -653,7 +663,7 @@ io.on('connection', (socket) => {
             }
         });
 
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('admin:toast', { msg: `RTM tags updated & saved` });
         immediateSaveToFirebase();
     });
@@ -661,7 +671,7 @@ io.on('connection', (socket) => {
     socket.on('admin:set_previous_owners', ({ previousOwners }) => {
         if (typeof previousOwners === 'object' && previousOwners !== null) {
             STATE.previousOwners = previousOwners;
-            io.emit('state:updated', STATE);
+            io.emit('state:updated', publicState(STATE));
             immediateSaveToFirebase();
         }
     });
@@ -676,7 +686,7 @@ io.on('connection', (socket) => {
                 if (STATE.previousOwners[key] === teamId) delete STATE.previousOwners[key];
             });
         }
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -693,7 +703,7 @@ io.on('connection', (socket) => {
             STATE.previousOwners[key] = teamId;
             added++;
         });
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         if (skipped) io.emit('admin:toast', { msg: `Skipped ${skipped} player(s) already tagged to another team` });
         if (added) io.emit('admin:toast', { msg: `Tagged ${added} player(s)` });
         immediateSaveToFirebase();
@@ -707,11 +717,15 @@ io.on('connection', (socket) => {
         if (!STATE.rtmImpactLocks[key]) STATE.rtmImpactLocks[key] = {};
         STATE.rtmImpactLocks[key][rtmTeamId] = true;
         pauseServerTimer();
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         debouncedSaveToFirebase();
     });
 
     socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
+        if (teamId && socket.data.teamId !== teamId && socket.data.role !== 'admin') {
+            socket.emit('admin:toast', { msg: '❌ Not authorized for this franchise', type: 'impact' });
+            return;
+        }
         const team = STATE.teams.find(t => t.id === teamId);
         const bonus = Number(STATE.config.impactAmount) || 0;
         if (isRTMImpactLocked(teamId, category, playerName)) {
@@ -724,7 +738,7 @@ io.on('connection', (socket) => {
             team.impactUsed = true; 
             team.impactTarget = `${category}:${playerName}`; 
             io.emit('admin:toast', { msg: `⚡ IMPACT: ${team.name} on ${playerName}`, type: 'impact' });
-            io.emit('state:updated', STATE);
+            io.emit('state:updated', publicState(STATE));
             immediateSaveToFirebase();
         }
     });
@@ -738,7 +752,7 @@ io.on('connection', (socket) => {
             team.impactActive = false;
             team.impactTarget = null;
             io.emit('admin:toast', { msg: `↩️ Impact Reset for ${team.name}`, type: 'normal' });
-            io.emit('state:updated', STATE);
+            io.emit('state:updated', publicState(STATE));
             immediateSaveToFirebase();
         }
     });
@@ -757,7 +771,7 @@ io.on('connection', (socket) => {
             team.directSignUsed = false; 
             team.rtmUsed = false;
             io.emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
-            io.emit('state:updated', STATE);
+            io.emit('state:updated', publicState(STATE));
             immediateSaveToFirebase();
         }
     });
@@ -808,7 +822,7 @@ io.on('connection', (socket) => {
         }
 
         io.emit('player:bid', { category, name, price: basePrice, highBidderId: null, teamId: null });
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('admin:toast', { msg: `↩️ ${name} reset to base ৳${basePrice}${buyer ? ` and ৳${soldPrice} refunded to ${buyer.name}` : ''}`, type: 'normal' });
         immediateSaveToFirebase();
     });
@@ -847,6 +861,11 @@ io.on('connection', (socket) => {
     });
 
     socket.on('player:bid', (data) => {
+        if (!data) return;
+        if (data.teamId && socket.data.teamId !== data.teamId && socket.data.role !== 'admin') {
+            socket.emit('admin:toast', { msg: '❌ Not authorized for this franchise' });
+            return;
+        }
         const validPrice = Number(data.price);
         if (isNaN(validPrice) || validPrice <= 0) return;
 
@@ -912,12 +931,13 @@ io.on('connection', (socket) => {
         if (data.teamId && team && !team.purchases?.[data.category]) {
             const categoryId = data.category;
             const categoryPlayers = (STATE.playersSnapshot[categoryId] || []);
-            let unacquiredCount = 0;
-            categoryPlayers.forEach(p => {
-                let sold = false;
-                STATE.teams.forEach(t => { if (t.purchases && t.purchases[categoryId] === p.name) sold = true; });
-                if (!sold) unacquiredCount++;
+            const soldInCat = new Set();
+            STATE.teams.forEach(t => {
+                if (t.purchases && t.purchases[categoryId]) {
+                    soldInCat.add(t.purchases[categoryId]);
+                }
             });
+            const unacquiredCount = categoryPlayers.filter(p => !soldInCat.has(p.name)).length;
             const unfulfilledTeamsForCat = STATE.teams.filter(t => !t.purchases?.[categoryId]);
 
             const isLastPlayerInCategory = unacquiredCount <= 1;
@@ -942,10 +962,20 @@ io.on('connection', (socket) => {
         debouncedSaveToFirebase();
     });
 
-    socket.on('player:sold', (data) => { executeSale(data); });
+    socket.on('player:sold', (data) => { 
+        if (socket.data.role !== 'admin') {
+            socket.emit('admin:toast', { msg: '❌ Only admin can mark player sold' });
+            return;
+        }
+        executeSale(data); 
+    });
 
     // --- RTM Phase 1: Team Sets Price + Match High Bidder ---
     socket.on('rtm:invoke', ({ category, name, rtmTeamId, manualHighBidderId, rtmPrice }) => {
+        if (rtmTeamId && socket.data.teamId !== rtmTeamId && socket.data.role !== 'admin') {
+            socket.emit('admin:toast', { msg: '❌ Not authorized to invoke RTM for this franchise', type: 'rtm' });
+            return;
+        }
         const key = `${category}:${name}`;
         const validation = validateRTMOffer({ category, name, rtmTeamId, rtmPrice });
         if (!validation.ok) {
@@ -969,7 +999,7 @@ io.on('connection', (socket) => {
 
         // Send prompt to the high bidder to accept or decline the incremented RTM matching price
         STATE.rtmState = { category, name, rtmTeamId, originalTeamId: highBidder, newPrice: priceToMatch };
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('rtm:prompt', STATE.rtmState);
         immediateSaveToFirebase();
     });
@@ -980,7 +1010,7 @@ io.on('connection', (socket) => {
         const { category, name, rtmTeamId, originalTeamId, newPrice } = STATE.rtmState;
         
         STATE.rtmState = null;
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('rtm:cleared');
 
         if (accept) {
@@ -999,7 +1029,7 @@ io.on('connection', (socket) => {
         const team = STATE.teams.find(t => t.id === teamId);
         if (!team) return;
         team.logo = logoUrl;
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -1021,7 +1051,7 @@ io.on('connection', (socket) => {
             }
         }
 
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -1030,7 +1060,7 @@ io.on('connection', (socket) => {
         if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
         STATE.playersSnapshot[category] = [];
         STATE.lotteryQueue = (STATE.lotteryQueue || []).filter(p => p.category !== category);
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -1039,7 +1069,7 @@ io.on('connection', (socket) => {
         STATE.categories = (STATE.categories || []).filter(c => c.id !== id);
         if (STATE.playersSnapshot) delete STATE.playersSnapshot[id];
         STATE.lotteryQueue = (STATE.lotteryQueue || []).filter(p => p.category !== id);
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -1111,7 +1141,7 @@ io.on('connection', (socket) => {
             if (targetCatObj) STATE.currentActivePlayer.base = targetCatObj.base;
         }
 
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('admin:toast', { msg: `🚚 Moved ${playerName} to ${targetCategory}` });
         immediateSaveToFirebase();
     });
@@ -1129,7 +1159,7 @@ io.on('connection', (socket) => {
         }
         if (newConfig.categories) STATE.categories = newConfig.categories;
         if (newConfig.previousOwners !== undefined) STATE.previousOwners = newConfig.previousOwners;
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         immediateSaveToFirebase();
     });
 
@@ -1142,12 +1172,12 @@ io.on('connection', (socket) => {
         io.emit('popup:close');
         io.emit('timer:sync', TIMER_STATE);
         io.emit('rtm:cleared');
-        io.emit('state:updated', STATE); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
+        io.emit('state:updated', publicState(STATE)); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
     });
 
     socket.on('schedule:save', (scheduleData) => {
         STATE.schedule = scheduleData || { teamNumbers: {}, matches: [] };
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('schedule:updated', STATE.schedule);
         io.emit('admin:toast', { msg: 'Tournament schedule updated & published!' });
         immediateSaveToFirebase();
@@ -1155,7 +1185,7 @@ io.on('connection', (socket) => {
 
     socket.on('schedule:reset', () => {
         STATE.schedule = { teamNumbers: {}, matches: [] };
-        io.emit('state:updated', STATE);
+        io.emit('state:updated', publicState(STATE));
         io.emit('schedule:updated', STATE.schedule);
         io.emit('admin:toast', { msg: 'Tournament schedule reset' });
         immediateSaveToFirebase();
