@@ -847,7 +847,7 @@ io.on('connection', (socket) => {
         clearInterval(serverTimerInterval);
         clearTimeout(serverTimerStartTimeout);
 
-        // Fallback auto-start timer after reveal animation duration (6.5s)
+        // Fallback auto-start timer after reveal animation duration + 5s delay (11.5s)
         if (!isUnsoldMode) {
             serverTimerStartTimeout = setTimeout(() => {
                 if (STATE.biddingActive && TIMER_STATE.paused && !isUnsoldMode) {
@@ -861,7 +861,7 @@ io.on('connection', (socket) => {
                     }, 1000);
                     io.emit('timer:sync', TIMER_STATE);
                 }
-            }, 6500);
+            }, 11500);
         }
 
         io.emit('popup:open', selectedPlayer);
