@@ -834,6 +834,8 @@ io.on('connection', (socket) => {
         immediateSaveToFirebase();
     });
 
+    let serverTimerStartTimeout = null;
+
     socket.on('admin:select_player', (playerData) => { 
         const revealStartedAt = playerData.revealCode ? Date.now() + PLAYER_REVEAL_DELAY_MS : null;
         const selectedPlayer = { ...playerData, revealStartedAt };
@@ -841,21 +843,46 @@ io.on('connection', (socket) => {
         
         const isUnsoldMode = !!(playerData.isUnsold || STATE.unsoldRoundActive);
         STATE.biddingActive = true;
-        TIMER_STATE = { paused: isUnsoldMode, time: 30 };
+        TIMER_STATE = { paused: true, time: 30 };
         clearInterval(serverTimerInterval);
+        clearTimeout(serverTimerStartTimeout);
 
+        // Fallback auto-start timer after reveal animation duration (6.5s)
         if (!isUnsoldMode) {
-            serverTimerInterval = setInterval(() => {
-                TIMER_STATE.time--;
-                io.emit('timer:sync', TIMER_STATE);
-                if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
-            }, 1000);
+            serverTimerStartTimeout = setTimeout(() => {
+                if (STATE.biddingActive && TIMER_STATE.paused && !isUnsoldMode) {
+                    TIMER_STATE.paused = false;
+                    clearInterval(serverTimerInterval);
+                    serverTimerInterval = setInterval(() => {
+                        if (TIMER_STATE.paused) return;
+                        TIMER_STATE.time--;
+                        io.emit('timer:sync', TIMER_STATE);
+                        if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
+                    }, 1000);
+                    io.emit('timer:sync', TIMER_STATE);
+                }
+            }, 6500);
         }
 
         io.emit('popup:open', selectedPlayer);
         io.emit('bidding:started');
         io.emit('timer:sync', TIMER_STATE);
         immediateSaveToFirebase(); 
+    });
+
+    socket.on('admin:start_timer', () => {
+        if (socket.data.role !== 'admin') return;
+        if (!STATE.biddingActive) return;
+        clearTimeout(serverTimerStartTimeout);
+        TIMER_STATE.paused = false;
+        clearInterval(serverTimerInterval);
+        serverTimerInterval = setInterval(() => {
+            if (TIMER_STATE.paused) return;
+            TIMER_STATE.time--;
+            io.emit('timer:sync', TIMER_STATE);
+            if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
+        }, 1000);
+        io.emit('timer:sync', TIMER_STATE);
     });
 
     socket.on('admin:close_popup', () => { 
@@ -898,6 +925,10 @@ io.on('connection', (socket) => {
             }
             if (!team) {
                 socket.emit('admin:toast', { msg: '❌ Franchise not found' });
+                return;
+            }
+            if (STATE.activeBidders && STATE.activeBidders[key] === data.teamId && socket.data.role !== 'admin') {
+                socket.emit('admin:toast', { msg: '✋ You are already the highest bidder for this player' });
                 return;
             }
             if (Number(team.purse) < validPrice) {
