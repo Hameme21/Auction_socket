@@ -722,7 +722,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
-        if (teamId && socket.data.teamId !== teamId && socket.data.role !== 'admin') {
+        if (!socket.data.teamId && teamId) {
+            const matchedTeam = STATE.teams.find(t => String(t.id).toUpperCase() === String(teamId).toUpperCase());
+            if (matchedTeam) {
+                socket.data.teamId = matchedTeam.id;
+                socket.data.role = socket.data.role || 'team';
+            }
+        }
+        if (teamId && String(socket.data.teamId || '').toUpperCase() !== String(teamId || '').toUpperCase() && socket.data.role !== 'admin') {
             socket.emit('admin:toast', { msg: '❌ Not authorized for this franchise', type: 'impact' });
             return;
         }
@@ -862,7 +869,14 @@ io.on('connection', (socket) => {
 
     socket.on('player:bid', (data) => {
         if (!data) return;
-        if (data.teamId && socket.data.teamId !== data.teamId && socket.data.role !== 'admin') {
+        if (!socket.data.teamId && data.teamId) {
+            const matchedTeam = STATE.teams.find(t => String(t.id).toUpperCase() === String(data.teamId).toUpperCase());
+            if (matchedTeam) {
+                socket.data.teamId = matchedTeam.id;
+                socket.data.role = socket.data.role || 'team';
+            }
+        }
+        if (data.teamId && String(socket.data.teamId || '').toUpperCase() !== String(data.teamId || '').toUpperCase() && socket.data.role !== 'admin') {
             socket.emit('admin:toast', { msg: '❌ Not authorized for this franchise' });
             return;
         }
@@ -972,7 +986,14 @@ io.on('connection', (socket) => {
 
     // --- RTM Phase 1: Team Sets Price + Match High Bidder ---
     socket.on('rtm:invoke', ({ category, name, rtmTeamId, manualHighBidderId, rtmPrice }) => {
-        if (rtmTeamId && socket.data.teamId !== rtmTeamId && socket.data.role !== 'admin') {
+        if (!socket.data.teamId && rtmTeamId) {
+            const matchedTeam = STATE.teams.find(t => String(t.id).toUpperCase() === String(rtmTeamId).toUpperCase());
+            if (matchedTeam) {
+                socket.data.teamId = matchedTeam.id;
+                socket.data.role = socket.data.role || 'team';
+            }
+        }
+        if (rtmTeamId && String(socket.data.teamId || '').toUpperCase() !== String(rtmTeamId || '').toUpperCase() && socket.data.role !== 'admin') {
             socket.emit('admin:toast', { msg: '❌ Not authorized to invoke RTM for this franchise', type: 'rtm' });
             return;
         }
