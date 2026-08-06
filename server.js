@@ -1101,11 +1101,16 @@ io.on('connection', (socket) => {
         const index = STATE.playersSnapshot[sourceCategory].findIndex(p => p.name === playerName);
         if (index === -1) return;
         
+        const targetCatObj = (STATE.categories || []).find(c => c.id === targetCategory);
+        const targetBasePrice = Number(targetCatObj?.base) || 0;
+        const targetIncrement = Number(targetCatObj?.increment) || 0;
+
         const [movedPlayer] = STATE.playersSnapshot[sourceCategory].splice(index, 1);
         movedPlayer.category = targetCategory;
-        const targetCatObj = (STATE.categories || []).find(c => c.id === targetCategory);
         if (targetCatObj) {
-            movedPlayer.base = targetCatObj.base || movedPlayer.base;
+            movedPlayer.base = targetBasePrice;
+            movedPlayer.price = targetBasePrice;
+            movedPlayer.increment = targetIncrement;
         }
         STATE.playersSnapshot[targetCategory].push(movedPlayer);
 
@@ -1116,8 +1121,8 @@ io.on('connection', (socket) => {
             STATE.previousOwners[newKey] = STATE.previousOwners[oldKey];
             delete STATE.previousOwners[oldKey];
         }
-        if (STATE.activeBids && STATE.activeBids[oldKey] !== undefined) {
-            STATE.activeBids[newKey] = STATE.activeBids[oldKey];
+        if (STATE.activeBids) {
+            STATE.activeBids[newKey] = targetBasePrice;
             delete STATE.activeBids[oldKey];
         }
         if (STATE.activeBidders && STATE.activeBidders[oldKey]) {
@@ -1125,7 +1130,7 @@ io.on('connection', (socket) => {
             delete STATE.activeBidders[oldKey];
         }
         if (STATE.soldPrices && STATE.soldPrices[oldKey] !== undefined) {
-            STATE.soldPrices[newKey] = STATE.soldPrices[oldKey];
+            STATE.soldPrices[newKey] = targetBasePrice;
             delete STATE.soldPrices[oldKey];
         }
         if (STATE.directSigns && STATE.directSigns[oldKey]) {
@@ -1152,18 +1157,21 @@ io.on('connection', (socket) => {
             STATE.lotteryQueue.forEach(qp => {
                 if (qp.category === sourceCategory && qp.name === playerName) {
                     qp.category = targetCategory;
-                    if (targetCatObj) qp.base = targetCatObj.base;
+                    if (targetCatObj) qp.base = targetBasePrice;
                 }
             });
         }
 
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.category === sourceCategory && STATE.currentActivePlayer.name === playerName) {
             STATE.currentActivePlayer.category = targetCategory;
-            if (targetCatObj) STATE.currentActivePlayer.base = targetCatObj.base;
+            if (targetCatObj) {
+                STATE.currentActivePlayer.base = targetBasePrice;
+                STATE.currentActivePlayer.currentPrice = targetBasePrice;
+            }
         }
 
         io.emit('state:updated', publicState(STATE));
-        io.emit('admin:toast', { msg: `🚚 Moved ${playerName} to ${targetCategory}` });
+        io.emit('admin:toast', { msg: `🚚 Moved ${playerName} to ${targetCategory} (Base: ৳${targetBasePrice}, Step: ৳${targetIncrement})` });
         immediateSaveToFirebase();
     });
 
