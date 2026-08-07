@@ -557,7 +557,7 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = pool;
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         STATE.unsoldRoundActive = false;
-        STATE.pickedPlayerCode = null;
+        STATE.pickedPlayerCode = pool[0] ? (pool[0].code || makePlayerCode(pool[0].category, pool[0].name)) : null;
         io.emit('state:updated', publicState(STATE));
         io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
         immediateSaveToFirebase();
@@ -590,6 +590,7 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = unsoldPool;
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         STATE.unsoldRoundActive = true;
+        STATE.pickedPlayerCode = unsoldPool[0] ? (unsoldPool[0].code || makePlayerCode(unsoldPool[0].category, unsoldPool[0].name)) : null;
         io.emit('state:updated', publicState(STATE));
         io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer, isUnsoldRound: true });
         immediateSaveToFirebase();
