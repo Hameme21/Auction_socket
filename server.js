@@ -472,6 +472,7 @@ function executeSale(data) {
         });
         
         STATE.currentActivePlayer = null;
+        STATE.pickedPlayerCode = null;
         STATE.biddingActive = false;
         TIMER_STATE = { paused: false, time: 30 }; 
         clearInterval(serverTimerInterval);
@@ -556,6 +557,7 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = pool;
         STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
         STATE.unsoldRoundActive = false;
+        STATE.pickedPlayerCode = null;
         io.emit('state:updated', publicState(STATE));
         io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
         immediateSaveToFirebase();
@@ -596,8 +598,18 @@ io.on('connection', (socket) => {
     socket.on('admin:shuffle_codes', shuffleCodes);
     socket.on('admin:generate_lottery', shuffleCodes);
     socket.on('admin:shuffle_unsold', shuffleUnsoldCodes);
+    socket.on('admin:pick_code', () => {
+        if (socket.data.role !== 'admin') return;
+        const next = (STATE.lotteryQueue || []).find(p => !STATE.teams.some(t => t.purchases?.[p.category] === p.name));
+        if (next) {
+            STATE.pickedPlayerCode = next.code || makePlayerCode(next.category, next.name);
+            io.emit('state:updated', publicState(STATE));
+            immediateSaveToFirebase();
+        }
+    });
     socket.on('admin:reset_codes', () => {
         STATE.currentActivePlayer = null;
+        STATE.pickedPlayerCode = null;
         STATE.lotteryQueue = [];
         STATE.codeShuffleActive = false;
         STATE.unsoldRoundActive = false;
@@ -642,6 +654,7 @@ io.on('connection', (socket) => {
         }
 
         STATE.currentActivePlayer = null;
+        STATE.pickedPlayerCode = null;
         STATE.biddingActive = false;
         TIMER_STATE = { paused: false, time: 30 };
         clearInterval(serverTimerInterval);
