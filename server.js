@@ -601,8 +601,12 @@ io.on('connection', (socket) => {
         STATE.lotteryQueue = [];
         STATE.codeShuffleActive = false;
         STATE.unsoldRoundActive = false;
+        STATE.biddingActive = false;
+        TIMER_STATE = { paused: false, time: 30 };
+        clearInterval(serverTimerInterval);
         io.emit('popup:close');
         io.emit('state:updated', publicState(STATE));
+        io.emit('admin:toast', { msg: '🔄 Code Shuffle & Unsold Round Deactivated' });
         immediateSaveToFirebase();
     });
 
