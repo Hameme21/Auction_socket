@@ -531,13 +531,13 @@ io.on('connection', (socket) => {
         clearInterval(serverTimerInterval);
         if (!data.paused && data.time > 0) {
             serverTimerInterval = setInterval(() => {
+                if (TIMER_STATE.paused) return;
                 TIMER_STATE.time--;
                 io.emit('timer:sync', TIMER_STATE);
                 if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
             }, 1000);
-        } else {
-            io.emit('timer:sync', TIMER_STATE);
         }
+        io.emit('timer:sync', TIMER_STATE);
     });
     
     function fisherYatesShuffle(array) {
