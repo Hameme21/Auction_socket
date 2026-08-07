@@ -965,12 +965,11 @@ io.on('connection', (socket) => {
             STATE.currentActivePlayer.currentPrice = validPrice;
         }
 
-        // Auto-extend timer by 15s if under 12s on new valid bid
-        if (STATE.biddingActive && !TIMER_STATE.paused) {
-            if (TIMER_STATE.time < 12) {
-                TIMER_STATE.time = 15;
-                io.emit('timer:sync', TIMER_STATE);
-            }
+        // Reset timer back to 30s on every valid bid
+        if (STATE.biddingActive) {
+            TIMER_STATE.time = 30;
+            TIMER_STATE.paused = false;
+            io.emit('timer:sync', TIMER_STATE);
         }
 
         io.emit('player:bid', { ...data, price: validPrice, highBidderId: STATE.activeBidders[key], teamName: team ? team.name : 'Admin' });
