@@ -859,13 +859,13 @@ io.on('connection', (socket) => {
                         io.emit('timer:sync', TIMER_STATE);
                         if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
                     }, 1000);
+                    io.emit('bidding:started');
                     io.emit('timer:sync', TIMER_STATE);
                 }
             }, 11500);
         }
 
         io.emit('popup:open', selectedPlayer);
-        io.emit('bidding:started');
         io.emit('timer:sync', TIMER_STATE);
         immediateSaveToFirebase(); 
     });
@@ -882,6 +882,7 @@ io.on('connection', (socket) => {
             io.emit('timer:sync', TIMER_STATE);
             if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
         }, 1000);
+        io.emit('bidding:started');
         io.emit('timer:sync', TIMER_STATE);
     });
 
