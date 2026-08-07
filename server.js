@@ -1228,7 +1228,12 @@ io.on('connection', (socket) => {
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
             STATE.teams = newConfig.teams.map(nt => {
                 const ot = (STATE.teams || []).find(t => t.id === nt.id); 
-                return { ...nt, purchases: ot && ot.purchases ? ot.purchases : {}, impactActive: ot ? ot.impactActive : false, rtmUsed: ot ? ot.rtmUsed : false };
+                return { 
+                    ...nt, 
+                    purchases: (nt.purchases !== undefined) ? nt.purchases : (ot && ot.purchases ? ot.purchases : {}),
+                    impactActive: (nt.impactActive !== undefined) ? nt.impactActive : (ot ? ot.impactActive : false),
+                    rtmUsed: (nt.rtmUsed !== undefined) ? nt.rtmUsed : (ot ? ot.rtmUsed : false)
+                };
             });
         }
         if (newConfig.impactAmount !== undefined) {
