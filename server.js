@@ -964,7 +964,7 @@ io.on('connection', (socket) => {
         const currentTopBid = Number(STATE.activeBids && STATE.activeBids[key]) || 0;
         const currentTopBidder = STATE.activeBidders ? STATE.activeBidders[key] : null;
 
-        if (currentTopBidder && validPrice <= currentTopBid && data.teamId) {
+        if (currentTopBidder && currentTopBidder !== 'ADMIN' && validPrice <= currentTopBid && data.teamId && data.teamId !== 'ADMIN') {
             socket.emit('admin:toast', { msg: `⚠️ Bid must be higher than current bid (৳${currentTopBid})` });
             return;
         }
@@ -973,7 +973,7 @@ io.on('connection', (socket) => {
         if (!STATE.activeBidders) STATE.activeBidders = {};
 
         STATE.activeBids[key] = validPrice;
-        STATE.activeBidders[key] = data.teamId ? data.teamId : null;
+        STATE.activeBidders[key] = data.teamId ? data.teamId : 'ADMIN';
 
         if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
             STATE.currentActivePlayer.currentPrice = validPrice;
