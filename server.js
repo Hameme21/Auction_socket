@@ -123,21 +123,25 @@ function getLeague(hostId) {
 function broadcastLeagueUpdate(hostId, league) {
     const rawHost = hostId || 'admin';
     const canonicalKey = rawHost.toString().trim().toLowerCase();
-    const statePayload = publicState(league);
+    const publicStatePayload = publicState(league, false);
+    const adminStatePayload = publicState(league, true);
     const safeTeams = (league.teams || []).map(({ password, ...t }) => t);
 
-    // 1. Emit to all sockets listening on this host (spectators, teams, managers)
-    io.to(`host:${canonicalKey}`).emit('state:updated', statePayload);
+    // 1. Emit safe state to public participants in this host
+    io.to(`host:${canonicalKey}`).emit('state:updated', publicStatePayload);
     io.to(`host:${canonicalKey}`).emit('init:teams_available', {
         hostId: rawHost,
         teams: safeTeams,
-        state: statePayload,
+        state: publicStatePayload,
         notFound: false
     });
 
-    // 2. If this is the default admin host, also emit globally
+    // 2. Emit full state (passwords preserved) to admin room
+    io.to(`admin:${canonicalKey}`).emit('state:updated', adminStatePayload);
+
+    // 3. If default admin host, also emit globally
     if (canonicalKey === 'admin') {
-        io.emit('state:updated', statePayload);
+        io.emit('state:updated', publicStatePayload);
     }
 }
 
@@ -329,10 +333,10 @@ let STATE = {
 };
 LEAGUES['admin'] = STATE;
 
-function publicState(state) {
+function publicState(state, forAdmin = false) {
     if (!state) return state;
     const { managers, ...safe } = state;
-    if (safe.teams && Array.isArray(safe.teams)) {
+    if (!forAdmin && safe.teams && Array.isArray(safe.teams)) {
         safe.teams = safe.teams.map(t => {
             if (!t) return t;
             const { password, ...safeTeam } = t;
@@ -800,6 +804,8 @@ function executeSale(data, hostId) {
 }
 
 io.on('connection', (socket) => {
+    socket.data.hostId = 'admin';
+    socket.join('host:admin');
     socket.emit('state:updated', publicState(STATE));
     if (STATE.currentActivePlayer) {
         socket.emit('popup:open', STATE.currentActivePlayer);
@@ -820,8 +826,9 @@ io.on('connection', (socket) => {
             socket.data.hostId = effectiveUser;
             socket.data.teamId = null;
             socket.join(`host:${effectiveUser.toLowerCase()}`);
+            socket.join(`admin:${effectiveUser.toLowerCase()}`);
             const hostLeague = getLeague(effectiveUser);
-            socket.emit('manager:logged_in', { username: effectiveUser, state: publicState(hostLeague) });
+            socket.emit('manager:logged_in', { username: effectiveUser, state: publicState(hostLeague, true) });
         } else {
             socket.emit('auth:portal_error', 'Invalid Credentials');
         }
@@ -1838,8 +1845,12 @@ io.on('connection', (socket) => {
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
             targetLeague.teams = newConfig.teams.map(nt => {
                 const ot = (targetLeague.teams || []).find(t => t.id === nt.id); 
+                const preservedPassword = (nt.password && String(nt.password).trim() !== '')
+                    ? String(nt.password).trim()
+                    : (ot && ot.password ? String(ot.password).trim() : '123');
                 return { 
                     ...nt, 
+                    password: preservedPassword,
                     purchases: (nt.purchases !== undefined) ? nt.purchases : (ot && ot.purchases ? ot.purchases : {}),
                     impactActive: (nt.impactActive !== undefined) ? nt.impactActive : (ot ? ot.impactActive : false),
                     rtmUsed: (nt.rtmUsed !== undefined) ? nt.rtmUsed : (ot ? ot.rtmUsed : false)
