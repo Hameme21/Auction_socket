@@ -42,8 +42,131 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
+// =========================================================
+// MULTI-HOST / MULTI-TENANT ISOLATION STORAGE
+// =========================================================
+let MANAGERS = { 'admin': 'admin' };
+let LEAGUES = {};
+
+function findManagerKey(hostId) {
+    if (!hostId) return null;
+    const target = hostId.toString().trim().toLowerCase();
+    if (target === 'admin') {
+        const adminKey = Object.keys(MANAGERS).find(k => k.toLowerCase() === 'admin');
+        return adminKey || 'admin';
+    }
+    const match = Object.keys(MANAGERS).find(k => k.toLowerCase() === target);
+    return match || null;
+}
+
+function createCleanLeague() {
+    return {
+        teams: [],
+        categories: [
+            { id: 'CAT_BAT', name: 'Batsmen', base: 50, increment: 10 },
+            { id: 'CAT_BOWL', name: 'Fast Bowlers', base: 50, increment: 10 },
+            { id: 'CAT_ALL', name: 'All-Rounders', base: 70, increment: 10 },
+            { id: 'CAT_WK', name: 'Wicket Keepers', base: 40, increment: 10 }
+        ],
+        playersSnapshot: {
+            CAT_BAT: [
+                { name: 'Virat Kohli', image: '' },
+                { name: 'Rohit Sharma', image: '' }
+            ],
+            CAT_BOWL: [
+                { name: 'Jasprit Bumrah', image: '' },
+                { name: 'Mitchell Starc', image: '' }
+            ],
+            CAT_ALL: [
+                { name: 'Hardik Pandya', image: '' },
+                { name: 'Ravindra Jadeja', image: '' }
+            ],
+            CAT_WK: [
+                { name: 'MS Dhoni', image: '' },
+                { name: 'Rishabh Pant', image: '' }
+            ]
+        },
+        activeBids: {},
+        activeBidders: {},
+        previousOwners: {},
+        soldPrices: {},
+        directSigns: {},
+        rtmEvents: {},
+        rtmImpactLocks: {},
+        schedule: { teamNumbers: {}, matches: [] },
+        lotteryQueue: [],
+        unsoldPlayers: {},
+        biddingActive: false,
+        codeShuffleActive: false,
+        currentActivePlayer: null,
+        pickedPlayerCode: null,
+        config: { impactAmount: 0 },
+        rtmState: null
+    };
+}
+
+function getLeague(hostId) {
+    const raw = (hostId || 'admin').toString().trim();
+    const target = raw.toLowerCase();
+    const existingKey = Object.keys(LEAGUES).find(k => k.toLowerCase() === target);
+    const key = existingKey || raw;
+    if (!LEAGUES[key]) {
+        if (key.toLowerCase() === 'admin') {
+            LEAGUES[key] = (typeof STATE !== 'undefined' && STATE) ? STATE : createCleanLeague();
+        } else {
+            LEAGUES[key] = createCleanLeague();
+        }
+    }
+    return LEAGUES[key];
+}
+
+function broadcastLeagueUpdate(hostId, league) {
+    const rawHost = hostId || 'admin';
+    const canonicalKey = rawHost.toString().trim().toLowerCase();
+    const statePayload = publicState(league);
+    const safeTeams = (league.teams || []).map(({ password, ...t }) => t);
+
+    // 1. Emit to all sockets listening on this host (spectators, teams, managers)
+    io.to(`host:${canonicalKey}`).emit('state:updated', statePayload);
+    io.to(`host:${canonicalKey}`).emit('init:teams_available', {
+        hostId: rawHost,
+        teams: safeTeams,
+        state: statePayload,
+        notFound: false
+    });
+
+    // 2. If this is the default admin host, also emit globally
+    if (canonicalKey === 'admin') {
+        io.emit('state:updated', statePayload);
+    }
+}
+
+
 app.get('/api/health', (req, res) => {
     res.status(200).json({ ok: true, status: 'Server is running', service: 'Auction Socket Backend', uptime: Math.floor(process.uptime()), timestamp: Date.now() });
+});
+
+app.get('/api/verify-host/:hostId', (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    const rawHost = (req.params.hostId || '').trim();
+    if (!rawHost) {
+        return res.status(400).json({ ok: false, notFound: true, error: 'Host ID required' });
+    }
+    const foundManager = findManagerKey(rawHost);
+    const isRegistered = !!foundManager || rawHost.toLowerCase() === 'admin';
+    if (!isRegistered) {
+        return res.status(404).json({ ok: false, notFound: true, hostId: rawHost });
+    }
+    const canonicalHost = foundManager || rawHost;
+    const hostLeague = getLeague(canonicalHost);
+    const safeTeams = (hostLeague.teams || []).map(({ password, ...t }) => t);
+    return res.status(200).json({
+        ok: true,
+        notFound: false,
+        hostId: canonicalHost,
+        teams: safeTeams,
+        state: publicState(hostLeague)
+    });
 });
 
 app.get('/status', (req, res) => {
@@ -84,20 +207,34 @@ try {
     });
   }
 
+  const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || (process.env.FIREBASE_PROJECT_ID ? `${process.env.FIREBASE_PROJECT_ID}.appspot.com` : undefined);
+
   if (credential) {
-    admin.initializeApp({ credential });
-  } else if (admin.apps.length === 0) {
+    admin.initializeApp({
+      credential,
+      storageBucket: storageBucket || undefined
+    });
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     try {
-      admin.initializeApp();
+      admin.initializeApp({
+        storageBucket: storageBucket || undefined
+      });
     } catch (_) {}
   }
 } catch (error) {
   console.error("Firebase initialization error:", error.message);
 }
 
+let bucket = null;
 if (admin.apps.length > 0) {
   db = admin.firestore();
   DOC_REF = db.collection('auction_data').doc('current_state');
+  try {
+    bucket = admin.storage().bucket();
+    console.log("✅ Firebase Storage connected successfully.");
+  } catch (e) {
+    console.warn("⚠️ Firebase Storage bucket initialization note:", e.message);
+  }
 } else {
   console.warn("⚠️ Firebase credentials missing or invalid. Running in in-memory state mode.");
   DOC_REF = {
@@ -106,11 +243,91 @@ if (admin.apps.length > 0) {
   };
 }
 
+// Dedicated Helper: Permanently purge player image assets from Firebase Storage
+async function deletePlayersFromFirebaseStorage(playerList = []) {
+    if (!admin.apps || admin.apps.length === 0) return;
+    try {
+        let storageBucket = bucket;
+        if (!storageBucket) {
+            try { storageBucket = admin.storage().bucket(); } catch (_) {}
+        }
+        if (!storageBucket) return;
+
+        const filePathsToDelete = new Set();
+
+        (playerList || []).forEach(p => {
+            if (p && p.image && typeof p.image === 'string') {
+                const img = p.image.trim();
+                if (img.includes('firebasestorage.googleapis.com')) {
+                    try {
+                        const urlObj = new URL(img);
+                        const match = urlObj.pathname.match(/\/o\/(.+)$/);
+                        if (match && match[1]) {
+                            filePathsToDelete.add(decodeURIComponent(match[1]));
+                        }
+                    } catch (_) {}
+                } else if (img.startsWith('gs://')) {
+                    const parts = img.replace('gs://', '').split('/');
+                    parts.shift(); // remove bucket name
+                    filePathsToDelete.add(parts.join('/'));
+                } else if (img.startsWith('/players/') || img.startsWith('players/')) {
+                    filePathsToDelete.add(img.replace(/^\/+/, ''));
+                }
+            }
+        });
+
+        // Delete individually identified player image files
+        for (const filePath of filePathsToDelete) {
+            try {
+                const file = storageBucket.file(filePath);
+                const [exists] = await file.exists();
+                if (exists) {
+                    await file.delete();
+                    console.log(`[Firebase Storage] Deleted player asset: ${filePath}`);
+                }
+            } catch (err) {
+                console.warn(`[Firebase Storage] Note deleting ${filePath}:`, err.message);
+            }
+        }
+
+        // Also sweep any files under 'players/' prefix in Firebase Storage bucket
+        try {
+            const [files] = await storageBucket.getFiles({ prefix: 'players/' });
+            if (files && files.length > 0) {
+                for (const file of files) {
+                    try {
+                        await file.delete();
+                        console.log(`[Firebase Storage] Swept player file: ${file.name}`);
+                    } catch (_) {}
+                }
+            }
+        } catch (err) {
+            // Non-fatal if bucket does not have players/ prefix or list fails
+        }
+    } catch (e) {
+        console.warn("[Firebase Storage] Global purge note:", e.message);
+    }
+}
+
+
+let TIMERS = {}; // hostId -> { paused, time, interval }
+function getHostTimer(hostId) {
+    const raw = (hostId || 'admin').toString().trim();
+    const target = raw.toLowerCase();
+    const existingKey = Object.keys(TIMERS).find(k => k.toLowerCase() === target);
+    const key = existingKey || raw;
+    if (!TIMERS[key]) {
+        TIMERS[key] = { paused: false, time: 30, interval: null };
+    }
+    return TIMERS[key];
+}
+
 let STATE = { 
     teams: [], categories: [], playersSnapshot: {}, activeBids: {}, activeBidders: {}, previousOwners: {}, soldPrices: {}, directSigns: {}, rtmEvents: {}, rtmImpactLocks: {}, managers: {}, currentActivePlayer: null, config: { impactAmount: 0 }, rtmState: null,
     lotteryQueue: [], unsoldPlayers: {}, biddingActive: false, codeShuffleActive: false,
     schedule: { teamNumbers: {}, matches: [] }
 };
+LEAGUES['admin'] = STATE;
 
 function publicState(state) {
     if (!state) return state;
@@ -126,13 +343,198 @@ function publicState(state) {
 }
 
 let TIMER_STATE = { paused: false, time: 30 };
+TIMERS['admin'] = TIMER_STATE;
 let serverTimerInterval = null;
 const PLAYER_REVEAL_DELAY_MS = 350;
 
-function pauseServerTimer() {
-    TIMER_STATE = { paused: true, time: TIMER_STATE.time };
-    clearInterval(serverTimerInterval);
-    io.emit('timer:sync', TIMER_STATE);
+function markPlayerUnsoldInternal(category, name, hostId) {
+    const rawHost = hostId || 'admin';
+    const hostKey = rawHost.toString().toLowerCase();
+    const league = getLeague(rawHost);
+    const key = `${category}:${name}`;
+    if (!league.unsoldPlayers) league.unsoldPlayers = {};
+    league.unsoldPlayers[key] = true;
+    
+    // Filter unsold player from lotteryQueue during regular round so they wait for the Unsold Round
+    if (league.lotteryQueue) {
+        league.lotteryQueue = league.lotteryQueue.filter(p => !(p.category === category && p.name === name));
+        if (league.unsoldRoundActive) {
+            const cat = (league.categories || []).find(c => c.id === category);
+            const pObj = ((league.playersSnapshot && league.playersSnapshot[category]) || []).find(p => p.name === name);
+            if (cat && pObj) {
+                const usedCodes = new Set(league.lotteryQueue.map(p => p.code).filter(Boolean));
+                league.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, code: makePlayerCode(cat.id, pObj.name, usedCodes), isUnsold: true });
+            }
+        }
+    }
+
+    league.currentActivePlayer = null;
+    league.pickedPlayerCode = null;
+    league.biddingActive = false;
+
+    const timer = getHostTimer(rawHost);
+    timer.paused = false;
+    timer.time = 30;
+    if (timer.interval) {
+        clearInterval(timer.interval);
+        timer.interval = null;
+    }
+
+    if (hostKey === 'admin') {
+        STATE.unsoldPlayers = league.unsoldPlayers;
+        STATE.lotteryQueue = league.lotteryQueue;
+        STATE.currentActivePlayer = null;
+        STATE.pickedPlayerCode = null;
+        STATE.biddingActive = false;
+        TIMER_STATE = { paused: false, time: 30 };
+        if (serverTimerInterval) {
+            clearInterval(serverTimerInterval);
+            serverTimerInterval = null;
+        }
+        io.emit('popup:close');
+        io.emit('player:unsold', { category, name });
+        io.emit('state:updated', publicState(STATE));
+    }
+
+    io.to(`host:${hostKey}`).emit('popup:close');
+    io.to(`host:${hostKey}`).emit('player:unsold', { category, name });
+    io.to(`host:${hostKey}`).emit('state:updated', publicState(league));
+    immediateSaveToFirebase();
+}
+
+function startHostTimer(hostId, initialSeconds) {
+    const rawHost = (hostId || 'admin').toString().trim();
+    const hostKey = rawHost.toLowerCase();
+    const league = getLeague(rawHost);
+    const timer = getHostTimer(rawHost);
+
+    league.biddingActive = true;
+    if (hostKey === 'admin') STATE.biddingActive = true;
+
+    timer.paused = false;
+    if (initialSeconds !== undefined && !isNaN(Number(initialSeconds))) {
+        timer.time = Number(initialSeconds);
+    } else if (timer.time <= 0) {
+        timer.time = 30;
+    }
+
+    if (timer.interval) {
+        clearInterval(timer.interval);
+        timer.interval = null;
+    }
+
+    timer.interval = setInterval(() => {
+        if (timer.paused) return;
+        timer.time--;
+        const syncPayload = { paused: timer.paused, time: timer.time };
+        io.to(`host:${hostKey}`).emit('timer:sync', syncPayload);
+        if (hostKey === 'admin') {
+            TIMER_STATE = syncPayload;
+            io.emit('timer:sync', syncPayload);
+        }
+
+        if (timer.time <= 0) {
+            clearInterval(timer.interval);
+            timer.interval = null;
+            handleTimerExpiration(rawHost);
+        }
+    }, 1000);
+
+    const syncPayload = { paused: timer.paused, time: timer.time };
+    io.to(`host:${hostKey}`).emit('bidding:started');
+    io.to(`host:${hostKey}`).emit('timer:sync', syncPayload);
+    if (hostKey === 'admin') {
+        TIMER_STATE = syncPayload;
+        io.emit('bidding:started');
+        io.emit('timer:sync', syncPayload);
+    }
+}
+
+function pauseHostTimer(hostId, customTime) {
+    const rawHost = (hostId || 'admin').toString().trim();
+    const hostKey = rawHost.toLowerCase();
+    const timer = getHostTimer(rawHost);
+    timer.paused = true;
+    if (customTime !== undefined && !isNaN(Number(customTime))) {
+        timer.time = Number(customTime);
+    }
+    if (timer.interval) {
+        clearInterval(timer.interval);
+        timer.interval = null;
+    }
+    const syncPayload = { paused: true, time: timer.time };
+    io.to(`host:${hostKey}`).emit('timer:sync', syncPayload);
+    if (hostKey === 'admin') {
+        TIMER_STATE = syncPayload;
+        io.emit('timer:sync', syncPayload);
+    }
+}
+
+function pauseServerTimer(hostId) {
+    pauseHostTimer(hostId || 'admin');
+}
+
+function handleTimerExpiration(rawHost) {
+    const hostKey = rawHost.toString().toLowerCase();
+    const league = getLeague(rawHost);
+    const timer = getHostTimer(rawHost);
+    timer.paused = true;
+    timer.time = 0;
+    if (timer.interval) {
+        clearInterval(timer.interval);
+        timer.interval = null;
+    }
+
+    if (league.currentActivePlayer) {
+        const p = league.currentActivePlayer;
+        const key = `${p.category}:${p.name}`;
+        const highBidder = league.activeBidders ? league.activeBidders[key] : null;
+        const hasTeamBid = highBidder && highBidder !== 'ADMIN' && (league.teams || []).some(t => t.id === highBidder);
+        const isAdminAdjusted = !!p.adminAdjusted || highBidder === 'ADMIN';
+        const finalPrice = Number(league.activeBids?.[key]) || Number(p.currentPrice) || Number(p.base) || 0;
+
+        if (hasTeamBid) {
+            // High bidder is an enrolled franchise
+            const soldSuccess = executeSale({
+                category: p.category,
+                name: p.name,
+                price: finalPrice,
+                teamId: highBidder,
+                isDirect: false,
+                isRTM: false
+            }, rawHost);
+            if (soldSuccess) {
+                const team = (league.teams || []).find(t => t.id === highBidder);
+                const toastMsg = `⏱️ Time's up! ${p.name} SOLD to ${team ? team.name : highBidder} @ ৳${finalPrice}!`;
+                io.to(`host:${hostKey}`).emit('admin:toast', { msg: toastMsg });
+                if (hostKey === 'admin') io.emit('admin:toast', { msg: toastMsg });
+            }
+        } else if (isAdminAdjusted) {
+            // Keep stage open so admin can award to chosen franchise or mark unsold
+            const syncPayload = { paused: true, time: 0 };
+            io.to(`host:${hostKey}`).emit('timer:sync', syncPayload);
+            io.to(`host:${hostKey}`).emit('timer:times_up_admin_choice', {
+                category: p.category,
+                name: p.name,
+                price: finalPrice,
+                adminAdjusted: true
+            });
+            const toastMsg = `⏱️ Time's up! Admin adjusted price to ৳${finalPrice} — choose franchise or mark unsold.`;
+            io.to(`host:${hostKey}`).emit('admin:toast', { msg: toastMsg });
+            if (hostKey === 'admin') {
+                TIMER_STATE = syncPayload;
+                io.emit('timer:sync', syncPayload);
+                io.emit('timer:times_up_admin_choice', { category: p.category, name: p.name, price: finalPrice, adminAdjusted: true });
+                io.emit('admin:toast', { msg: toastMsg });
+            }
+        } else {
+            // No bids and no admin increase -> mark player unsold automatically!
+            markPlayerUnsoldInternal(p.category, p.name, rawHost);
+            const toastMsg = `⏱️ Time's up! ${p.name} marked UNSOLD (no bids placed)`;
+            io.to(`host:${hostKey}`).emit('admin:toast', { msg: toastMsg });
+            if (hostKey === 'admin') io.emit('admin:toast', { msg: toastMsg });
+        }
+    }
 }
 
 function codeSeed(category, name) {
@@ -161,16 +563,17 @@ function makePlayerCode(category, name, usedCodes) {
     return code;
 }
 
-function buildShufflePool() {
+function buildShufflePool(targetLeague) {
+    const league = targetLeague || STATE;
     const usedCodes = new Set();
     const pool = [];
     const unsoldPool = [];
-    STATE.categories.forEach(cat => {
-        const players = STATE.playersSnapshot[cat.id] || [];
+    (league.categories || []).forEach(cat => {
+        const players = (league.playersSnapshot && league.playersSnapshot[cat.id]) || [];
         players.forEach(p => {
             const key = `${cat.id}:${p.name}`;
             let isSold = false;
-            STATE.teams.forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
+            (league.teams || []).forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
             if (!isSold) {
                 const entry = {
                     category: cat.id,
@@ -178,7 +581,7 @@ function buildShufflePool() {
                     base: cat.base,
                     image: p.image,
                     code: makePlayerCode(cat.id, p.name, usedCodes),
-                    isUnsold: !!(STATE.unsoldPlayers && STATE.unsoldPlayers[key])
+                    isUnsold: !!(league.unsoldPlayers && league.unsoldPlayers[key])
                 };
                 if (entry.isUnsold) unsoldPool.push(entry);
                 else pool.push(entry);
@@ -192,39 +595,51 @@ let firebaseSaveTimeout = null;
 function debouncedSaveToFirebase() {
     if (firebaseSaveTimeout) clearTimeout(firebaseSaveTimeout);
     firebaseSaveTimeout = setTimeout(async () => {
-        try { await DOC_REF.set(STATE); } catch (e) { console.error("Firebase Save Error:", e); }
-    }, 2000); 
+        try {
+            LEAGUES['admin'] = STATE;
+            await DOC_REF.set({ managers: MANAGERS, leagues: LEAGUES, defaultLeague: STATE });
+        } catch (e) {
+            console.error("Firebase Save Error:", e);
+        }
+    }, 1500); 
 }
 
-async function immediateSaveToFirebase() { try { await DOC_REF.set(STATE); } catch (e) {} }
+async function immediateSaveToFirebase() {
+    try {
+        LEAGUES['admin'] = STATE;
+        await DOC_REF.set({ managers: MANAGERS, leagues: LEAGUES, defaultLeague: STATE });
+    } catch (e) {}
+}
 
 async function loadFromFirebase() { 
     try { 
-        const doc = await DOC_REF.get(); 
+        const doc = await Promise.race([
+            DOC_REF.get(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Firebase load timed out")), 2000))
+        ]); 
         if (doc.exists) { 
-            STATE = doc.data(); 
+            const data = doc.data();
+            if (data.managers) MANAGERS = { ...MANAGERS, ...data.managers };
+            if (data.leagues) {
+                LEAGUES = data.leagues;
+                const adminKey = Object.keys(LEAGUES).find(k => k.toLowerCase() === 'admin');
+                if (adminKey && LEAGUES[adminKey]) STATE = LEAGUES[adminKey];
+                else if (LEAGUES['admin']) STATE = LEAGUES['admin'];
+            } else if (data.teams) {
+                // Backward compatible legacy migration
+                STATE = data;
+                LEAGUES['admin'] = STATE;
+            }
             if (!STATE.config) STATE.config = { impactAmount: 0 }; 
             if (!STATE.teams) STATE.teams = [];
             if (!STATE.categories) STATE.categories = [];
-            if (!STATE.activeBids) STATE.activeBids = {};
-            if (!STATE.activeBidders) STATE.activeBidders = {};
-            if (!STATE.previousOwners) STATE.previousOwners = {};
-            if (!STATE.soldPrices) STATE.soldPrices = {};
-            if (!STATE.directSigns) STATE.directSigns = {}; 
-            if (!STATE.rtmEvents) STATE.rtmEvents = {}; 
-            if (!STATE.rtmImpactLocks) STATE.rtmImpactLocks = {};
-            if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
-            if (!STATE.lotteryQueue) STATE.lotteryQueue = [];
-            if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
-            if (STATE.biddingActive === undefined) STATE.biddingActive = false;
-            if (STATE.codeShuffleActive === undefined) STATE.codeShuffleActive = false;
-            if (!STATE.schedule) STATE.schedule = { teamNumbers: {}, matches: [] };
         } else { await immediateSaveToFirebase(); } 
     } catch (e) { console.log("Firebase Load Error:", e); } 
 }
 
-function getSaleReserve(team, activeCategory) {
-    return STATE.categories.reduce((total, cat) => {
+function getSaleReserve(team, activeCategory, league) {
+    const cats = (league && Array.isArray(league.categories)) ? league.categories : (STATE.categories || []);
+    return cats.reduce((total, cat) => {
         if (cat.id !== activeCategory && (!team.purchases || !team.purchases[cat.id])) {
             return total + (Number(cat.base) || 0);
         }
@@ -272,69 +687,112 @@ function validateRTMOffer({ category, name, rtmTeamId, rtmPrice }) {
     return { ok: true, team, price, currentBid, inc, maxOffer };
 }
 
-function executeSale(data) {
-    const team = STATE.teams.find(t => t.id === data.teamId);
+function executeSale(data, hostId) {
+    const rawHost = hostId || 'admin';
+    const hostKey = rawHost.toString().toLowerCase();
+    const league = getLeague(rawHost);
+    const team = (league.teams || []).find(t => t.id === data.teamId);
     const validPrice = Number(data.price) || 0;
 
     if (team) {
         if (team.purchases && team.purchases[data.category]) {
-            io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} already has a player from ${data.category}!` });
+            const err = `❌ Sale Failed: ${team.name} already has a player from ${data.category}!`;
+            io.to(`host:${hostKey}`).emit('admin:toast', { msg: err });
+            if (hostKey === 'admin') io.emit('admin:toast', { msg: err });
             return false;
         }
 
-        const requiredReserve = getSaleReserve(team, data.category);
+        const requiredReserve = getSaleReserve(team, data.category, league);
 
         if ((Number(team.purse) - validPrice) < requiredReserve) {
-            io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} lacks reserve purse!` });
+            const err = `❌ Sale Failed: ${team.name} lacks reserve purse!`;
+            io.to(`host:${hostKey}`).emit('admin:toast', { msg: err });
+            if (hostKey === 'admin') io.emit('admin:toast', { msg: err });
             return false;
         }
         if (Number(team.purse) < validPrice) {
-            io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} has insufficient funds!` });
+            const err = `❌ Sale Failed: ${team.name} has insufficient funds!`;
+            io.to(`host:${hostKey}`).emit('admin:toast', { msg: err });
+            if (hostKey === 'admin') io.emit('admin:toast', { msg: err });
             return false;
         }
         
-        if (data.isDirect && !data.isRTM) {
+        if (data.isDirect && !data.isRTM && !data.isAdminAward) {
             if (team.directSignUsed) {
-                io.emit('admin:toast', { msg: `❌ Sale Failed: ${team.name} already used Direct Sign!` });
+                const err = `❌ Sale Failed: ${team.name} already used Direct Sign!`;
+                io.to(`host:${hostKey}`).emit('admin:toast', { msg: err });
+                if (hostKey === 'admin') io.emit('admin:toast', { msg: err });
                 return false;
             }
             team.directSignUsed = true;
-            if (!STATE.directSigns) STATE.directSigns = {};
-            STATE.directSigns[`${data.category}:${data.name}`] = true;
+            if (!league.directSigns) league.directSigns = {};
+            league.directSigns[`${data.category}:${data.name}`] = true;
         }
 
         if (data.isRTM) {
             team.rtmUsed = true; 
-            if (!STATE.rtmEvents) STATE.rtmEvents = {};
-            STATE.rtmEvents[`${data.category}:${data.name}`] = true;
+            if (!league.rtmEvents) league.rtmEvents = {};
+            league.rtmEvents[`${data.category}:${data.name}`] = true;
         }
 
         team.purse = Number(team.purse) - validPrice;
         team.purchases = team.purchases || {};
         team.purchases[data.category] = data.name;
-        if (!STATE.soldPrices) STATE.soldPrices = {};
-        STATE.soldPrices[`${data.category}:${data.name}`] = validPrice;
+        if (!league.soldPrices) league.soldPrices = {};
+        league.soldPrices[`${data.category}:${data.name}`] = validPrice;
         
-        const bonus = Number(STATE.config.impactAmount) || 0;
+        const bonus = Number((league.config && league.config.impactAmount) || 0);
         const soldKey = `${data.category}:${data.name}`;
         
-        STATE.teams.forEach(t => {
+        (league.teams || []).forEach(t => {
             if (t.impactActive && t.impactTarget === soldKey) {
                 if(t.id === data.teamId) { t.impactActive = false; } 
                 else { t.purse = Math.max(0, Number(t.purse) - bonus); t.impactActive = false; }
             }
         });
         
-        STATE.currentActivePlayer = null;
-        STATE.pickedPlayerCode = null;
-        STATE.biddingActive = false;
-        TIMER_STATE = { paused: false, time: 30 }; 
-        clearInterval(serverTimerInterval);
-        if (STATE.lotteryQueue && Array.isArray(STATE.lotteryQueue)) {
-            STATE.lotteryQueue = STATE.lotteryQueue.filter(p => !(p.category === data.category && p.name === data.name));
+        league.currentActivePlayer = null;
+        league.pickedPlayerCode = null;
+        league.biddingActive = false;
+
+        const timer = getHostTimer(rawHost);
+        timer.paused = false;
+        timer.time = 30;
+        if (timer.interval) {
+            clearInterval(timer.interval);
+            timer.interval = null;
         }
-        io.emit('popup:close');
-        io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
+
+        if (league.lotteryQueue && Array.isArray(league.lotteryQueue)) {
+            league.lotteryQueue = league.lotteryQueue.filter(p => !(p.category === data.category && p.name === data.name));
+        }
+
+        if (hostKey === 'admin') {
+            STATE.teams = league.teams;
+            STATE.directSigns = league.directSigns;
+            STATE.rtmEvents = league.rtmEvents;
+            STATE.soldPrices = league.soldPrices;
+            STATE.currentActivePlayer = null;
+            STATE.pickedPlayerCode = null;
+            STATE.biddingActive = false;
+            STATE.lotteryQueue = league.lotteryQueue;
+            TIMER_STATE = { paused: false, time: 30 };
+            if (serverTimerInterval) {
+                clearInterval(serverTimerInterval);
+                serverTimerInterval = null;
+            }
+        }
+
+        io.to(`host:${hostKey}`).emit('popup:close');
+        io.to(`host:${hostKey}`).emit('player:sold', { payload: { ...data, price: validPrice }, teams: league.teams });
+        io.to(`host:${hostKey}`).emit('state:updated', publicState(league));
+
+        if (hostKey === 'admin') {
+            io.emit('popup:close');
+            io.emit('player:sold', { payload: { ...data, price: validPrice }, teams: STATE.teams });
+            io.emit('state:updated', publicState(STATE));
+        }
+
         immediateSaveToFirebase();
         return true;
     }
@@ -342,6 +800,7 @@ function executeSale(data) {
 }
 
 io.on('connection', (socket) => {
+    socket.emit('state:updated', publicState(STATE));
     if (STATE.currentActivePlayer) {
         socket.emit('popup:open', STATE.currentActivePlayer);
         socket.emit('timer:sync', TIMER_STATE); 
@@ -350,49 +809,79 @@ io.on('connection', (socket) => {
     if (STATE.rtmState) socket.emit('rtm:prompt', STATE.rtmState);
 
     socket.on('manager:login', ({ username, password }) => {
-        if (STATE.managers && STATE.managers[username] === password) {
+        const rawUser = (username || '').toString().trim();
+        const target = rawUser.toLowerCase();
+        const foundManager = findManagerKey(rawUser);
+        const effectiveUser = foundManager || rawUser;
+
+        if ((foundManager && MANAGERS[foundManager] === password) || 
+            (target === 'admin' && (!MANAGERS['admin'] || MANAGERS['admin'] === password))) {
             socket.data.role = 'admin';
+            socket.data.hostId = effectiveUser;
             socket.data.teamId = null;
-            socket.emit('manager:logged_in', { username, state: publicState(STATE) });
+            socket.join(`host:${effectiveUser.toLowerCase()}`);
+            const hostLeague = getLeague(effectiveUser);
+            socket.emit('manager:logged_in', { username: effectiveUser, state: publicState(hostLeague) });
+        } else {
+            socket.emit('auth:portal_error', 'Invalid Credentials');
         }
-        else socket.emit('auth:portal_error', 'Invalid Creds');
     });
 
     socket.on('manager:register', ({ username, password }) => {
-        if (!STATE.managers) STATE.managers = {};
-        if (STATE.managers[username]) return socket.emit('auth:portal_error', 'Taken');
-        if (!username || !password) return socket.emit('auth:portal_error', 'Missing Data'); 
-        STATE.managers[username] = password;
+        const rawUser = (username || '').toString().trim();
+        const safePassword = (password || '').toString();
+        if (!/^[a-zA-Z0-9_-]{3,40}$/.test(rawUser)) return socket.emit('auth:portal_error', 'Host ID must be 3–40 letters, numbers, hyphens, or underscores');
+        if (safePassword.length < 8) return socket.emit('auth:portal_error', 'Password must contain at least 8 characters');
+        const found = findManagerKey(rawUser);
+        if (found) return socket.emit('auth:portal_error', `Host ID "${found}" Already Taken`);
+        
+        // Register new host with clean isolated league preserving exact chosen casing
+        MANAGERS[rawUser] = safePassword;
+        LEAGUES[rawUser] = createCleanLeague(); // COMPLETELY NEW, NO CONNECTION TO OTHER TEAMS OR SCHEDULE
         immediateSaveToFirebase();
-        socket.emit('auth:portal_success', { msg: 'Created' });
+        socket.emit('auth:portal_success', { msg: `Manager account "${rawUser}" created` });
     });
 
     socket.on('participant:connect', (hostId) => {
-        if (!STATE.managers || !STATE.managers[hostId]) return socket.emit('auth:portal_error', 'Host Not Found');
-        const safeTeams = (STATE.teams || []).map(({ password, ...t }) => t);
-        socket.emit('init:teams_available', { hostId, teams: safeTeams });
+        const rawHost = (hostId || 'admin').toString().trim();
+        const foundManager = findManagerKey(rawHost);
+        const isRegistered = !!foundManager || rawHost.toLowerCase() === 'admin';
+        if (!isRegistered) {
+            return socket.emit('init:teams_available', { hostId: rawHost, teams: [], notFound: true });
+        }
+
+        const canonicalHost = foundManager || rawHost;
+        socket.data.hostId = canonicalHost;
+        socket.join(`host:${canonicalHost.toLowerCase()}`);
+        const hostLeague = getLeague(canonicalHost);
+        const safeTeams = (hostLeague.teams || []).map(({ password, ...t }) => t);
+        socket.emit('init:teams_available', { hostId: canonicalHost, teams: safeTeams, state: publicState(hostLeague), notFound: false });
     });
 
-    socket.on('team:login', ({ teamId, password, role }) => {
-        const team = STATE.teams.find(t => t.id === teamId);
-        if (role === 'team' && (!team || team.password !== password)) return socket.emit('auth:team_error', 'Bad Pass');
+    socket.on('team:login', ({ teamId, password, role, hostId }) => {
+        const rawHost = (hostId || socket.data.hostId || 'admin').toString().trim();
+        const foundManager = findManagerKey(rawHost);
+        const effectiveHost = foundManager || rawHost;
+
+        socket.data.hostId = effectiveHost;
+        socket.join(`host:${effectiveHost.toLowerCase()}`);
+        const hostLeague = getLeague(effectiveHost);
+        const team = (hostLeague.teams || []).find(t => (t.id || '').toUpperCase() === (teamId || '').toUpperCase());
+        if (role === 'team' && (!team || team.password !== password)) return socket.emit('auth:team_error', 'Invalid Franchise Password');
         socket.data.role = role;
-        socket.data.teamId = teamId || null;
-        socket.emit('auction:enter', { role, teamId, state: publicState(STATE) });
+        socket.data.teamId = team ? team.id : (teamId || null);
+        socket.emit('auction:enter', { role, teamId: socket.data.teamId, hostId: effectiveHost, state: publicState(hostLeague) });
     });
 
     socket.on('admin:timer_control', (data) => {
-        TIMER_STATE = data;
-        clearInterval(serverTimerInterval);
-        if (!data.paused && data.time > 0) {
-            serverTimerInterval = setInterval(() => {
-                if (TIMER_STATE.paused) return;
-                TIMER_STATE.time--;
-                io.emit('timer:sync', TIMER_STATE);
-                if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
-            }, 1000);
+        const hostId = socket.data.hostId || 'admin';
+        const seconds = Number(data.time) || 30;
+        const isPaused = !!data.paused;
+        if (isPaused) {
+            pauseHostTimer(hostId, seconds);
+        } else {
+            startHostTimer(hostId, seconds);
         }
-        io.emit('timer:sync', TIMER_STATE);
     });
     
     function fisherYatesShuffle(array) {
@@ -405,28 +894,46 @@ io.on('connection', (socket) => {
     }
 
     // --- CODE SHUFFLE CONTROLS ---
-    const shuffleCodes = () => {
-        let { pool } = buildShufflePool();
+    const shuffleCodes = (hostOverride) => {
+        const hostId = hostOverride || socket.data.hostId || 'admin';
+        const hostKey = hostId.toLowerCase();
+        const league = getLeague(hostId);
+        let { pool } = buildShufflePool(league);
+        if (!pool || pool.length === 0) {
+            socket.emit('admin:toast', { msg: '⚠️ No players on the player list to shuffle code. Please add players first.' });
+            return;
+        }
         pool = fisherYatesShuffle(pool);
-        STATE.lotteryQueue = pool;
-        STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
-        STATE.unsoldRoundActive = false;
-        STATE.pickedPlayerCode = pool[0] ? (pool[0].code || makePlayerCode(pool[0].category, pool[0].name)) : null;
-        io.emit('state:updated', publicState(STATE));
-        io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
+        league.lotteryQueue = pool;
+        league.codeShuffleActive = true;
+        league.unsoldRoundActive = false;
+        league.pickedPlayerCode = pool[0] ? (pool[0].code || makePlayerCode(pool[0].category, pool[0].name, new Set())) : null;
+        if (hostKey === 'admin') {
+            STATE.lotteryQueue = league.lotteryQueue;
+            STATE.codeShuffleActive = league.codeShuffleActive;
+            STATE.unsoldRoundActive = league.unsoldRoundActive;
+            STATE.pickedPlayerCode = league.pickedPlayerCode;
+            io.emit('state:updated', publicState(STATE));
+            io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer });
+        }
+        io.to(`host:${hostKey}`).emit('state:updated', publicState(league));
+        io.to(`host:${hostKey}`).emit('code_shuffle:started', { hasActivePlayer: !!league.currentActivePlayer });
         immediateSaveToFirebase();
     };
 
-    const shuffleUnsoldCodes = () => {
-        let { unsoldPool } = buildShufflePool();
+    const shuffleUnsoldCodes = (hostOverride) => {
+        const hostId = hostOverride || socket.data.hostId || 'admin';
+        const hostKey = hostId.toLowerCase();
+        const league = getLeague(hostId);
+        let { unsoldPool } = buildShufflePool(league);
         if (!unsoldPool.length) {
-            STATE.categories.forEach(cat => {
-                const players = STATE.playersSnapshot[cat.id] || [];
+            (league.categories || []).forEach(cat => {
+                const players = (league.playersSnapshot && league.playersSnapshot[cat.id]) || [];
                 players.forEach(p => {
                     const key = `${cat.id}:${p.name}`;
                     let isSold = false;
-                    STATE.teams.forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
-                    if (!isSold && STATE.unsoldPlayers?.[key] && !unsoldPool.some(u => u.category === cat.id && u.name === p.name)) {
+                    (league.teams || []).forEach(t => { if (t.purchases && t.purchases[cat.id] === p.name) isSold = true; });
+                    if (!isSold && league.unsoldPlayers?.[key] && !unsoldPool.some(u => u.category === cat.id && u.name === p.name)) {
                         const usedCodes = new Set(unsoldPool.map(u => u.code));
                         unsoldPool.push({
                             category: cat.id,
@@ -440,13 +947,25 @@ io.on('connection', (socket) => {
                 });
             });
         }
+        if (!unsoldPool || unsoldPool.length === 0) {
+            socket.emit('admin:toast', { msg: '⚠️ No unsold players on the player list to shuffle.' });
+            return;
+        }
         unsoldPool = fisherYatesShuffle(unsoldPool);
-        STATE.lotteryQueue = unsoldPool;
-        STATE.codeShuffleActive = STATE.lotteryQueue.length > 0;
-        STATE.unsoldRoundActive = true;
-        STATE.pickedPlayerCode = unsoldPool[0] ? (unsoldPool[0].code || makePlayerCode(unsoldPool[0].category, unsoldPool[0].name)) : null;
-        io.emit('state:updated', publicState(STATE));
-        io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer, isUnsoldRound: true });
+        league.lotteryQueue = unsoldPool;
+        league.codeShuffleActive = true;
+        league.unsoldRoundActive = true;
+        league.pickedPlayerCode = unsoldPool[0] ? (unsoldPool[0].code || makePlayerCode(unsoldPool[0].category, unsoldPool[0].name, new Set())) : null;
+        if (hostKey === 'admin') {
+            STATE.lotteryQueue = league.lotteryQueue;
+            STATE.codeShuffleActive = league.codeShuffleActive;
+            STATE.unsoldRoundActive = league.unsoldRoundActive;
+            STATE.pickedPlayerCode = league.pickedPlayerCode;
+            io.emit('state:updated', publicState(STATE));
+            io.emit('code_shuffle:started', { hasActivePlayer: !!STATE.currentActivePlayer, isUnsoldRound: true });
+        }
+        io.to(`host:${hostKey}`).emit('state:updated', publicState(league));
+        io.to(`host:${hostKey}`).emit('code_shuffle:started', { hasActivePlayer: !!league.currentActivePlayer, isUnsoldRound: true });
         immediateSaveToFirebase();
     };
 
@@ -455,147 +974,189 @@ io.on('connection', (socket) => {
     socket.on('admin:shuffle_unsold', shuffleUnsoldCodes);
     socket.on('admin:pick_code', () => {
         if (socket.data.role !== 'admin') return;
-        const next = (STATE.lotteryQueue || []).find(p => !STATE.teams.some(t => t.purchases?.[p.category] === p.name));
-        if (next) {
-            STATE.pickedPlayerCode = next.code || makePlayerCode(next.category, next.name);
-            io.emit('state:updated', publicState(STATE));
-            immediateSaveToFirebase();
+        const hostId = socket.data.hostId || 'admin';
+        const hostKey = hostId.toLowerCase();
+        const league = getLeague(hostId);
+        
+        // Find next player in queue that is not already purchased
+        const queue = league.lotteryQueue || [];
+        const next = queue.find(p => !(league.teams || []).some(t => t.purchases?.[p.category] === p.name));
+        
+        if (!next) {
+            // Check if there are unqueued available players in snapshot pool
+            const { pool, unsoldPool } = buildShufflePool(league);
+            const totalAvailable = [...pool, ...unsoldPool];
+            if (totalAvailable.length === 0) {
+                socket.emit('admin:toast', { msg: '⚠️ No players on the player list to pick a code. Please add players first.' });
+                return;
+            }
+            league.lotteryQueue = totalAvailable;
+            const chosen = totalAvailable[0];
+            league.pickedPlayerCode = chosen.code || makePlayerCode(chosen.category, chosen.name, new Set());
+        } else {
+            league.pickedPlayerCode = next.code || makePlayerCode(next.category, next.name, new Set());
         }
+
+        if (hostKey === 'admin') STATE.pickedPlayerCode = league.pickedPlayerCode;
+        io.to(`host:${hostKey}`).emit('state:updated', publicState(league));
+        if (hostKey === 'admin') io.emit('state:updated', publicState(STATE));
+        immediateSaveToFirebase();
     });
     socket.on('admin:reset_codes', () => {
-        STATE.currentActivePlayer = null;
-        STATE.pickedPlayerCode = null;
-        STATE.lotteryQueue = [];
-        STATE.codeShuffleActive = false;
-        STATE.unsoldRoundActive = false;
-        STATE.biddingActive = false;
-        TIMER_STATE = { paused: false, time: 30 };
-        clearInterval(serverTimerInterval);
-        io.emit('popup:close');
-        io.emit('state:updated', publicState(STATE));
-        io.emit('admin:toast', { msg: '🔄 Code Shuffle & Unsold Round Deactivated' });
+        const hostId = socket.data.hostId || 'admin';
+        const hostKey = hostId.toLowerCase();
+        const league = getLeague(hostId);
+        league.currentActivePlayer = null;
+        league.pickedPlayerCode = null;
+        league.lotteryQueue = [];
+        league.codeShuffleActive = false;
+        league.unsoldRoundActive = false;
+        league.biddingActive = false;
+        const timer = getHostTimer(hostId);
+        timer.paused = false;
+        timer.time = 30;
+        if (timer.interval) {
+            clearInterval(timer.interval);
+            timer.interval = null;
+        }
+        if (hostKey === 'admin') {
+            STATE.currentActivePlayer = null;
+            STATE.pickedPlayerCode = null;
+            STATE.lotteryQueue = [];
+            STATE.codeShuffleActive = false;
+            STATE.unsoldRoundActive = false;
+            STATE.biddingActive = false;
+            TIMER_STATE = { paused: false, time: 30 };
+            if (serverTimerInterval) {
+                clearInterval(serverTimerInterval);
+                serverTimerInterval = null;
+            }
+            io.emit('popup:close');
+            io.emit('state:updated', publicState(STATE));
+            io.emit('admin:toast', { msg: '🔄 Code Shuffle & Unsold Round Deactivated' });
+        }
+        io.to(`host:${hostKey}`).emit('popup:close');
+        io.to(`host:${hostKey}`).emit('state:updated', publicState(league));
+        io.to(`host:${hostKey}`).emit('admin:toast', { msg: '🔄 Code Shuffle & Unsold Round Deactivated' });
         immediateSaveToFirebase();
     });
 
     socket.on('admin:start_bidding', () => {
-        STATE.biddingActive = true;
-        TIMER_STATE = { paused: false, time: 30 };
-        clearInterval(serverTimerInterval);
-        serverTimerInterval = setInterval(() => {
-            TIMER_STATE.time--;
-            io.emit('timer:sync', TIMER_STATE);
-            if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
-        }, 1000);
-        io.emit('bidding:started');
+        const hostId = socket.data.hostId || 'admin';
+        startHostTimer(hostId, 30);
         immediateSaveToFirebase();
     });
     
     socket.on('admin:mark_unsold', ({ category, name }) => {
-        const key = `${category}:${name}`;
-        if (!STATE.unsoldPlayers) STATE.unsoldPlayers = {};
-        STATE.unsoldPlayers[key] = true;
-        
-        // Filter unsold player from lotteryQueue during regular round so they wait for the Unsold Round
-        if (STATE.lotteryQueue) {
-            STATE.lotteryQueue = STATE.lotteryQueue.filter(p => !(p.category === category && p.name === name));
-            if (STATE.unsoldRoundActive) {
-                const cat = STATE.categories.find(c => c.id === category);
-                const pObj = (STATE.playersSnapshot[category] || []).find(p => p.name === name);
-                if (cat && pObj) {
-                    const usedCodes = new Set(STATE.lotteryQueue.map(p => p.code).filter(Boolean));
-                    STATE.lotteryQueue.push({ category: cat.id, name: pObj.name, base: cat.base, image: pObj.image, code: makePlayerCode(cat.id, pObj.name, usedCodes), isUnsold: true });
-                }
-            }
-        }
-
-        STATE.currentActivePlayer = null;
-        STATE.pickedPlayerCode = null;
-        STATE.biddingActive = false;
-        TIMER_STATE = { paused: false, time: 30 };
-        clearInterval(serverTimerInterval);
-        io.emit('popup:close');
-        io.emit('player:unsold', { category, name });
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        const hostId = socket.data.hostId || 'admin';
+        markPlayerUnsoldInternal(category, name, hostId);
     });
 
-    socket.on('admin:save_team_rtm', ({ teamId, selectedPlayers }) => {
+    socket.on('admin:save_team_rtm', async ({ teamId, selectedPlayers }) => {
         if (!teamId || !Array.isArray(selectedPlayers)) return;
-        if (!STATE.previousOwners) STATE.previousOwners = {};
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        if (!targetLeague.previousOwners) targetLeague.previousOwners = {};
 
         // Remove previous RTM tags assigned to this team
-        Object.keys(STATE.previousOwners).forEach(key => {
-            if (STATE.previousOwners[key] === teamId) delete STATE.previousOwners[key];
+        Object.keys(targetLeague.previousOwners).forEach(key => {
+            if (targetLeague.previousOwners[key] === teamId) delete targetLeague.previousOwners[key];
         });
 
         // Add the selected RTM tags
         selectedPlayers.forEach(p => {
             if (p.catId && p.name) {
-                STATE.previousOwners[`${p.catId}:${p.name}`] = teamId;
+                targetLeague.previousOwners[`${p.catId}:${p.name}`] = teamId;
             }
         });
 
-        io.emit('state:updated', publicState(STATE));
-        io.emit('admin:toast', { msg: `RTM tags updated & saved` });
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.previousOwners = targetLeague.previousOwners;
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `RTM tags updated & saved` });
+        await immediateSaveToFirebase();
     });
 
-    socket.on('admin:set_previous_owners', ({ previousOwners }) => {
+    socket.on('admin:set_previous_owners', async ({ previousOwners }) => {
         if (typeof previousOwners === 'object' && previousOwners !== null) {
-            STATE.previousOwners = previousOwners;
-            io.emit('state:updated', publicState(STATE));
-            immediateSaveToFirebase();
+            const hostId = socket.data.hostId || 'admin';
+            const targetLeague = getLeague(hostId);
+            targetLeague.previousOwners = previousOwners;
+            if (hostId.toLowerCase() === 'admin') {
+                STATE.previousOwners = previousOwners;
+            }
+            broadcastLeagueUpdate(hostId, targetLeague);
+            await immediateSaveToFirebase();
         }
     });
 
-    socket.on('admin:remove_previous', ({ teamId, players, previousOwners }) => {
+    socket.on('admin:remove_previous', async ({ teamId, players, previousOwners }) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
         if (previousOwners && typeof previousOwners === 'object') {
-            STATE.previousOwners = previousOwners;
+            targetLeague.previousOwners = previousOwners;
         } else if (teamId && Array.isArray(players)) {
-            if (!STATE.previousOwners) STATE.previousOwners = {};
+            if (!targetLeague.previousOwners) targetLeague.previousOwners = {};
             players.forEach(p => {
                 const key = `${p.catId}:${p.name}`;
-                if (STATE.previousOwners[key] === teamId) delete STATE.previousOwners[key];
+                if (targetLeague.previousOwners[key] === teamId) delete targetLeague.previousOwners[key];
             });
         }
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.previousOwners = targetLeague.previousOwners;
+        }
+        broadcastLeagueUpdate(hostId, targetLeague);
+        await immediateSaveToFirebase();
     });
 
-    socket.on('admin:import_previous', ({ teamId, players }) => {
-        if (!STATE.previousOwners) STATE.previousOwners = {};
+    socket.on('admin:import_previous', async ({ teamId, players }) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        if (!targetLeague.previousOwners) targetLeague.previousOwners = {};
         let added = 0, skipped = 0;
         players.forEach(p => {
             const key = `${p.catId}:${p.name}`;
-            const currentOwner = STATE.previousOwners[key];
+            const currentOwner = targetLeague.previousOwners[key];
             if (currentOwner && currentOwner !== teamId) {
                 skipped++;
                 return;
             }
-            STATE.previousOwners[key] = teamId;
+            targetLeague.previousOwners[key] = teamId;
             added++;
         });
-        io.emit('state:updated', publicState(STATE));
-        if (skipped) io.emit('admin:toast', { msg: `Skipped ${skipped} player(s) already tagged to another team` });
-        if (added) io.emit('admin:toast', { msg: `Tagged ${added} player(s)` });
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.previousOwners = targetLeague.previousOwners;
+        }
+        broadcastLeagueUpdate(hostId, targetLeague);
+        if (skipped) io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `Skipped ${skipped} player(s) already tagged to another team` });
+        if (added) io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `Tagged ${added} player(s)` });
+        await immediateSaveToFirebase();
     });
 
     socket.on('rtm:lockImpact', ({ category, name, rtmTeamId }) => {
-        const team = STATE.teams.find(t => t.id === rtmTeamId);
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const team = (targetLeague.teams || []).find(t => t.id === rtmTeamId);
         const key = `${category}:${name}`;
-        if (!team || team.rtmUsed || (team.purchases && team.purchases[category]) || !STATE.previousOwners || STATE.previousOwners[key] !== rtmTeamId) return;
-        if (!STATE.rtmImpactLocks) STATE.rtmImpactLocks = {};
-        if (!STATE.rtmImpactLocks[key]) STATE.rtmImpactLocks[key] = {};
-        STATE.rtmImpactLocks[key][rtmTeamId] = true;
-        pauseServerTimer();
-        io.emit('state:updated', publicState(STATE));
+        if (!team || team.rtmUsed || (team.purchases && team.purchases[category]) || !targetLeague.previousOwners || targetLeague.previousOwners[key] !== rtmTeamId) return;
+        if (!targetLeague.rtmImpactLocks) targetLeague.rtmImpactLocks = {};
+        if (!targetLeague.rtmImpactLocks[key]) targetLeague.rtmImpactLocks[key] = {};
+        targetLeague.rtmImpactLocks[key][rtmTeamId] = true;
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.rtmImpactLocks = targetLeague.rtmImpactLocks;
+        }
+        pauseServerTimer(hostId);
+        broadcastLeagueUpdate(hostId, targetLeague);
         debouncedSaveToFirebase();
     });
 
-    socket.on('team:activateImpact', ({ teamId, category, playerName }) => {
+    socket.on('team:activateImpact', async ({ teamId, category, playerName }) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
         if (!socket.data.teamId && teamId) {
-            const matchedTeam = STATE.teams.find(t => String(t.id).toUpperCase() === String(teamId).toUpperCase());
+            const matchedTeam = (targetLeague.teams || []).find(t => String(t.id).toUpperCase() === String(teamId).toUpperCase());
             if (matchedTeam) {
                 socket.data.teamId = matchedTeam.id;
                 socket.data.role = socket.data.role || 'team';
@@ -605,10 +1166,10 @@ io.on('connection', (socket) => {
             socket.emit('admin:toast', { msg: '❌ Not authorized for this franchise', type: 'impact' });
             return;
         }
-        const team = STATE.teams.find(t => t.id === teamId);
-        const bonus = Number(STATE.config.impactAmount) || 0;
-        if (isRTMImpactLocked(teamId, category, playerName)) {
-            io.emit('admin:toast', { msg: `⚡ Impact locked: ${team ? team.name : teamId} has RTM available for ${playerName}`, type: 'rtm' });
+        const team = (targetLeague.teams || []).find(t => t.id === teamId);
+        const bonus = Number((targetLeague.config && targetLeague.config.impactAmount) || STATE.config.impactAmount) || 0;
+        if (isRTMImpactLocked(teamId, category, playerName, hostId)) {
+            io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `⚡ Impact locked: ${team ? team.name : teamId} has RTM available for ${playerName}`, type: 'rtm' });
             return;
         }
         if (team && !team.impactUsed && !team.impactActive && bonus > 0) {
@@ -616,59 +1177,100 @@ io.on('connection', (socket) => {
             team.impactActive = true;
             team.impactUsed = true; 
             team.impactTarget = `${category}:${playerName}`; 
-            io.emit('admin:toast', { msg: `⚡ IMPACT: ${team.name} on ${playerName}`, type: 'impact' });
-            io.emit('state:updated', publicState(STATE));
-            immediateSaveToFirebase();
+            if (hostId.toLowerCase() === 'admin') {
+                const adminTeam = (STATE.teams || []).find(t => t.id === teamId);
+                if (adminTeam) {
+                    adminTeam.purse = team.purse;
+                    adminTeam.impactActive = true;
+                    adminTeam.impactUsed = true;
+                    adminTeam.impactTarget = team.impactTarget;
+                }
+            }
+            io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `⚡ IMPACT: ${team.name} on ${playerName}`, type: 'impact' });
+            broadcastLeagueUpdate(hostId, targetLeague);
+            await immediateSaveToFirebase();
         }
     });
 
-    socket.on('admin:resetImpact', ({ teamId }) => {
-        const team = STATE.teams.find(t => t.id === teamId);
-        const bonus = Number(STATE.config.impactAmount) || 0;
+    socket.on('admin:resetImpact', async ({ teamId }) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const team = (targetLeague.teams || []).find(t => t.id === teamId);
+        const bonus = Number((targetLeague.config && targetLeague.config.impactAmount) || STATE.config.impactAmount) || 0;
         if (team) {
             if (team.impactActive) team.purse = Math.max(0, Number(team.purse) - bonus); 
             team.impactUsed = false;
             team.impactActive = false;
             team.impactTarget = null;
-            io.emit('admin:toast', { msg: `↩️ Impact Reset for ${team.name}`, type: 'normal' });
-            io.emit('state:updated', publicState(STATE));
-            immediateSaveToFirebase();
+            if (hostId.toLowerCase() === 'admin') {
+                const adminTeam = (STATE.teams || []).find(t => t.id === teamId);
+                if (adminTeam) {
+                    adminTeam.purse = team.purse;
+                    adminTeam.impactUsed = false;
+                    adminTeam.impactActive = false;
+                    adminTeam.impactTarget = null;
+                }
+            }
+            io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `↩️ Impact Reset for ${team.name}`, type: 'normal' });
+            broadcastLeagueUpdate(hostId, targetLeague);
+            await immediateSaveToFirebase();
         }
     });
 
-    socket.on('admin:resetTeam', ({ teamId }) => {
-        const team = STATE.teams.find(t => t.id === teamId);
+    socket.on('admin:resetTeam', async ({ teamId }) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const team = (targetLeague.teams || []).find(t => t.id === teamId);
         if (team) {
             team.purse = 500;
-            if (STATE.directSigns) { for (const cat in team.purchases) { delete STATE.directSigns[`${cat}:${team.purchases[cat]}`]; } }
-            if (STATE.rtmEvents) { for (const cat in team.purchases) { delete STATE.rtmEvents[`${cat}:${team.purchases[cat]}`]; } }
-            if (STATE.rtmImpactLocks) { for (const cat in team.purchases) { delete STATE.rtmImpactLocks[`${cat}:${team.purchases[cat]}`]; } }
+            if (targetLeague.directSigns) { for (const cat in team.purchases) { delete targetLeague.directSigns[`${cat}:${team.purchases[cat]}`]; } }
+            if (targetLeague.rtmEvents) { for (const cat in team.purchases) { delete targetLeague.rtmEvents[`${cat}:${team.purchases[cat]}`]; } }
+            if (targetLeague.rtmImpactLocks) { for (const cat in team.purchases) { delete targetLeague.rtmImpactLocks[`${cat}:${team.purchases[cat]}`]; } }
             team.purchases = {};
             team.impactUsed = false;
             team.impactActive = false;
             team.impactTarget = null;
             team.directSignUsed = false; 
             team.rtmUsed = false;
-            io.emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
-            io.emit('state:updated', publicState(STATE));
-            immediateSaveToFirebase();
+
+            if (hostId.toLowerCase() === 'admin') {
+                const adminTeam = (STATE.teams || []).find(t => t.id === teamId);
+                if (adminTeam) {
+                    adminTeam.purse = 500;
+                    if (STATE.directSigns) { for (const cat in adminTeam.purchases) { delete STATE.directSigns[`${cat}:${adminTeam.purchases[cat]}`]; } }
+                    if (STATE.rtmEvents) { for (const cat in adminTeam.purchases) { delete STATE.rtmEvents[`${cat}:${adminTeam.purchases[cat]}`]; } }
+                    if (STATE.rtmImpactLocks) { for (const cat in adminTeam.purchases) { delete STATE.rtmImpactLocks[`${cat}:${adminTeam.purchases[cat]}`]; } }
+                    adminTeam.purchases = {};
+                    adminTeam.impactUsed = false;
+                    adminTeam.impactActive = false;
+                    adminTeam.impactTarget = null;
+                    adminTeam.directSignUsed = false;
+                    adminTeam.rtmUsed = false;
+                }
+            }
+
+            io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `Team ${team.name} Reset`, type: 'normal' });
+            broadcastLeagueUpdate(hostId, targetLeague);
+            await immediateSaveToFirebase();
         }
     });
 
-    socket.on('admin:resetPlayer', ({ category, name }) => {
+    socket.on('admin:resetPlayer', async ({ category, name }) => {
         if (socket.data.role !== 'admin') {
             socket.emit('admin:toast', { msg: '❌ Only admin can reset a player', type: 'normal' });
             return;
         }
 
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
         const key = `${category}:${name}`;
-        const cat = STATE.categories.find(c => c.id === category);
+        const cat = (targetLeague.categories || STATE.categories || []).find(c => c.id === category);
         const basePrice = Number(cat?.base) || 0;
-        const soldPrice = Number(STATE.soldPrices && STATE.soldPrices[key]) || Number(STATE.activeBids && STATE.activeBids[key]) || basePrice;
-        const buyer = STATE.teams.find(t => t.purchases && t.purchases[category] === name);
-        const wasDirect = !!(STATE.directSigns && STATE.directSigns[key]);
-        const wasRTM = !!(STATE.rtmEvents && STATE.rtmEvents[key]);
-        const impactBonus = Number(STATE.config && STATE.config.impactAmount) || 0;
+        const soldPrice = Number(targetLeague.soldPrices && targetLeague.soldPrices[key]) || Number(targetLeague.activeBids && targetLeague.activeBids[key]) || basePrice;
+        const buyer = (targetLeague.teams || []).find(t => t.purchases && t.purchases[category] === name);
+        const wasDirect = !!(targetLeague.directSigns && targetLeague.directSigns[key]);
+        const wasRTM = !!(targetLeague.rtmEvents && targetLeague.rtmEvents[key]);
+        const impactBonus = Number((targetLeague.config && targetLeague.config.impactAmount) || STATE.config.impactAmount) || 0;
 
         if (buyer) {
             buyer.purse = Number(buyer.purse) + soldPrice;
@@ -677,7 +1279,7 @@ io.on('connection', (socket) => {
             if (wasRTM) buyer.rtmUsed = false;
         }
 
-        STATE.teams.forEach(t => {
+        (targetLeague.teams || []).forEach(t => {
             if (t.impactTarget === key) {
                 if (t.impactActive || (buyer && t.id === buyer.id)) t.purse = Math.max(0, Number(t.purse) - impactBonus);
                 t.impactUsed = false;
@@ -686,24 +1288,45 @@ io.on('connection', (socket) => {
             }
         });
 
-        if (!STATE.activeBids) STATE.activeBids = {};
-        if (!STATE.activeBidders) STATE.activeBidders = {};
-        STATE.activeBids[key] = basePrice;
-        delete STATE.activeBidders[key];
-        if (STATE.soldPrices) delete STATE.soldPrices[key];
-        if (STATE.directSigns) delete STATE.directSigns[key];
-        if (STATE.rtmEvents) delete STATE.rtmEvents[key];
-        if (STATE.unsoldPlayers) delete STATE.unsoldPlayers[key];
-        if (STATE.rtmImpactLocks) delete STATE.rtmImpactLocks[key];
-        if (STATE.rtmState && STATE.rtmState.category === category && STATE.rtmState.name === name) {
-            STATE.rtmState = null;
-            io.emit('rtm:cleared');
+        if (!targetLeague.activeBids) targetLeague.activeBids = {};
+        if (!targetLeague.activeBidders) targetLeague.activeBidders = {};
+        targetLeague.activeBids[key] = basePrice;
+        delete targetLeague.activeBidders[key];
+        if (targetLeague.soldPrices) delete targetLeague.soldPrices[key];
+        if (targetLeague.directSigns) delete targetLeague.directSigns[key];
+        if (targetLeague.rtmEvents) delete targetLeague.rtmEvents[key];
+        if (targetLeague.unsoldPlayers) delete targetLeague.unsoldPlayers[key];
+        if (targetLeague.rtmImpactLocks) delete targetLeague.rtmImpactLocks[key];
+        if (targetLeague.rtmState && targetLeague.rtmState.category === category && targetLeague.rtmState.name === name) {
+            targetLeague.rtmState = null;
+            io.to(`host:${hostId.toLowerCase()}`).emit('rtm:cleared');
         }
 
-        io.emit('player:bid', { category, name, price: basePrice, highBidderId: null, teamId: null });
-        io.emit('state:updated', publicState(STATE));
-        io.emit('admin:toast', { msg: `↩️ ${name} reset to base ৳${basePrice}${buyer ? ` and ৳${soldPrice} refunded to ${buyer.name}` : ''}`, type: 'normal' });
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            if (STATE.soldPrices) delete STATE.soldPrices[key];
+            if (STATE.directSigns) delete STATE.directSigns[key];
+            if (STATE.rtmEvents) delete STATE.rtmEvents[key];
+            if (STATE.unsoldPlayers) delete STATE.unsoldPlayers[key];
+            if (STATE.rtmImpactLocks) delete STATE.rtmImpactLocks[key];
+            if (!STATE.activeBids) STATE.activeBids = {};
+            STATE.activeBids[key] = basePrice;
+            if (STATE.activeBidders) delete STATE.activeBidders[key];
+            if (STATE.rtmState && STATE.rtmState.category === category && STATE.rtmState.name === name) {
+                STATE.rtmState = null;
+            }
+            const adminBuyer = (STATE.teams || []).find(t => t.purchases && t.purchases[category] === name);
+            if (adminBuyer) {
+                adminBuyer.purse = Number(adminBuyer.purse) + soldPrice;
+                delete adminBuyer.purchases[category];
+                if (wasDirect) adminBuyer.directSignUsed = false;
+                if (wasRTM) adminBuyer.rtmUsed = false;
+            }
+        }
+
+        io.to(`host:${hostId.toLowerCase()}`).emit('player:bid', { category, name, price: basePrice, highBidderId: null, teamId: null });
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `↩️ ${name} reset to base ৳${basePrice}${buyer ? ` and ৳${soldPrice} refunded to ${buyer.name}` : ''}`, type: 'normal' });
+        await immediateSaveToFirebase();
     });
 
     let serverTimerStartTimeout = null;
@@ -742,41 +1365,99 @@ io.on('connection', (socket) => {
         immediateSaveToFirebase(); 
     });
 
+    
+    socket.on('admin:adjust_bid', ({ category, name, price, delta, action }) => {
+        if (socket.data.role !== 'admin') return;
+        const hostId = socket.data.hostId || 'admin';
+        const hostKey = hostId.toString().toLowerCase();
+        const league = getLeague(hostId);
+
+        if (!league.activeBids) league.activeBids = {};
+        const key = `${category}:${name}`;
+        const newPrice = Math.max(0, Number(price) || 0);
+        league.activeBids[key] = newPrice;
+        if (league.currentActivePlayer && league.currentActivePlayer.name === name) {
+            league.currentActivePlayer.currentPrice = newPrice;
+            league.currentActivePlayer.adminAdjusted = true;
+        }
+
+        const currentBidder = league.activeBidders ? league.activeBidders[key] : null;
+        const bidderTeam = currentBidder ? (league.teams || []).find(t => t.id === currentBidder) : null;
+        
+        const actionVerb = action || (delta >= 0 ? 'increased' : 'decreased');
+        const textMsg = `Auctioneer ${actionVerb} bid to ৳${newPrice}`;
+
+        const bidPayload = {
+            category,
+            name,
+            price: newPrice,
+            highBidderId: currentBidder,
+            teamId: currentBidder,
+            teamName: bidderTeam ? bidderTeam.name : (currentBidder || 'Admin Desk'),
+            isAdjustment: true,
+            adjustmentText: `📢 ${textMsg}`
+        };
+
+        if (hostKey === 'admin') {
+            if (!STATE.activeBids) STATE.activeBids = {};
+            STATE.activeBids[key] = newPrice;
+            if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === name) {
+                STATE.currentActivePlayer.currentPrice = newPrice;
+                STATE.currentActivePlayer.adminAdjusted = true;
+            }
+            io.emit('player:bid', bidPayload);
+            io.emit('admin:toast', { msg: `📢 ${textMsg}` });
+        }
+
+        io.to(`host:${hostKey}`).emit('player:bid', bidPayload);
+        io.to(`host:${hostKey}`).emit('admin:toast', { msg: `📢 ${textMsg}` });
+        immediateSaveToFirebase();
+    });
+
     socket.on('admin:start_timer', () => {
         if (socket.data.role !== 'admin') return;
-        if (!STATE.biddingActive) return;
-        clearTimeout(serverTimerStartTimeout);
-        TIMER_STATE.paused = false;
-        clearInterval(serverTimerInterval);
-        serverTimerInterval = setInterval(() => {
-            if (TIMER_STATE.paused) return;
-            TIMER_STATE.time--;
-            io.emit('timer:sync', TIMER_STATE);
-            if (TIMER_STATE.time <= 0) clearInterval(serverTimerInterval);
-        }, 1000);
-        io.emit('bidding:started');
-        io.emit('timer:sync', TIMER_STATE);
+        const hostId = socket.data.hostId || 'admin';
+        startHostTimer(hostId);
     });
 
     socket.on('admin:close_popup', () => { 
-        STATE.currentActivePlayer = null; 
-        STATE.biddingActive = false;
-        TIMER_STATE = { paused: false, time: 30 }; 
-        clearInterval(serverTimerInterval);
-        io.emit('popup:close'); 
+        const hostId = socket.data.hostId || 'admin';
+        const hostKey = hostId.toString().toLowerCase();
+        const league = getLeague(hostId);
+        league.currentActivePlayer = null; 
+        league.biddingActive = false;
+        const timer = getHostTimer(hostId);
+        timer.paused = false;
+        timer.time = 30;
+        if (timer.interval) {
+            clearInterval(timer.interval);
+            timer.interval = null;
+        }
+        if (hostKey === 'admin') {
+            STATE.currentActivePlayer = null; 
+            STATE.biddingActive = false;
+            TIMER_STATE = { paused: false, time: 30 }; 
+            if (serverTimerInterval) {
+                clearInterval(serverTimerInterval);
+                serverTimerInterval = null;
+            }
+            io.emit('popup:close');
+        }
+        io.to(`host:${hostKey}`).emit('popup:close');
         immediateSaveToFirebase(); 
     });
 
     socket.on('player:bid', (data) => {
         if (!data) return;
-        if (!socket.data.teamId && data.teamId) {
-            const matchedTeam = STATE.teams.find(t => String(t.id).toUpperCase() === String(data.teamId).toUpperCase());
-            if (matchedTeam) {
-                socket.data.teamId = matchedTeam.id;
-                socket.data.role = socket.data.role || 'team';
-            }
+        const hostId = socket.data.hostId || 'admin';
+        const hostKey = hostId.toString().toLowerCase();
+        const league = getLeague(hostId);
+
+        if (socket.data.role !== 'admin' && socket.data.role !== 'team') {
+            socket.emit('admin:toast', { msg: '❌ Sign in as a franchise before placing a bid' });
+            return;
         }
-        if (data.teamId && String(socket.data.teamId || '').toUpperCase() !== String(data.teamId || '').toUpperCase() && socket.data.role !== 'admin') {
+        if (socket.data.role === 'team' && String(socket.data.teamId || '').toUpperCase() !== String(data.teamId || '').toUpperCase()) {
             socket.emit('admin:toast', { msg: '❌ Not authorized for this franchise' });
             return;
         }
@@ -784,15 +1465,16 @@ io.on('connection', (socket) => {
         if (isNaN(validPrice) || validPrice <= 0) return;
 
         const key = `${data.category}:${data.name}`;
-        const team = data.teamId ? STATE.teams.find(t => t.id === data.teamId) : null;
+        const team = data.teamId ? (league.teams || []).find(t => t.id === data.teamId) : null;
+        const timer = getHostTimer(hostId);
 
         // Team bid validation
         if (data.teamId) {
-            if (!STATE.biddingActive) {
+            if (!league.biddingActive) {
                 socket.emit('admin:toast', { msg: '⚠️ Bidding has not started yet' });
                 return;
             }
-            if (TIMER_STATE.paused) {
+            if (timer.paused) {
                 socket.emit('admin:toast', { msg: '⏸️ Bidding is currently paused' });
                 return;
             }
@@ -800,7 +1482,7 @@ io.on('connection', (socket) => {
                 socket.emit('admin:toast', { msg: '❌ Franchise not found' });
                 return;
             }
-            if (STATE.activeBidders && STATE.activeBidders[key] === data.teamId && socket.data.role !== 'admin') {
+            if (league.activeBidders && league.activeBidders[key] === data.teamId && socket.data.role !== 'admin') {
                 socket.emit('admin:toast', { msg: '✋ You are already the highest bidder for this player' });
                 return;
             }
@@ -808,54 +1490,70 @@ io.on('connection', (socket) => {
                 socket.emit('admin:toast', { msg: `❌ Insufficient purse balance (Purse: ৳${team.purse})` });
                 return;
             }
-            const reserve = getSaleReserve(team, data.category);
+            const reserve = getSaleReserve(team, data.category, league);
             if ((Number(team.purse) - validPrice) < reserve) {
                 socket.emit('admin:toast', { msg: `❌ Must reserve ৳${reserve} for remaining required slots!` });
                 return;
             }
         }
 
-        const currentTopBid = Number(STATE.activeBids && STATE.activeBids[key]) || 0;
-        const currentTopBidder = STATE.activeBidders ? STATE.activeBidders[key] : null;
+        const currentTopBid = Number(league.activeBids && league.activeBids[key]) || 0;
+        const currentTopBidder = league.activeBidders ? league.activeBidders[key] : null;
 
         if (currentTopBidder && currentTopBidder !== 'ADMIN' && validPrice <= currentTopBid && data.teamId && data.teamId !== 'ADMIN') {
             socket.emit('admin:toast', { msg: `⚠️ Bid must be higher than current bid (৳${currentTopBid})` });
             return;
         }
 
-        if (!STATE.activeBids) STATE.activeBids = {};
-        if (!STATE.activeBidders) STATE.activeBidders = {};
+        if (!league.activeBids) league.activeBids = {};
+        if (!league.activeBidders) league.activeBidders = {};
 
-        STATE.activeBids[key] = validPrice;
-        STATE.activeBidders[key] = data.teamId ? data.teamId : 'ADMIN';
+        league.activeBids[key] = validPrice;
+        league.activeBidders[key] = data.teamId ? data.teamId : 'ADMIN';
 
-        if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
-            STATE.currentActivePlayer.currentPrice = validPrice;
+        if (league.currentActivePlayer && league.currentActivePlayer.name === data.name) {
+            league.currentActivePlayer.currentPrice = validPrice;
+            if (data.teamId && data.teamId !== 'ADMIN') {
+                league.currentActivePlayer.adminAdjusted = false;
+            }
         }
 
         // Reset timer back to 30s on every valid bid
-        if (STATE.biddingActive) {
-            TIMER_STATE.time = 30;
-            TIMER_STATE.paused = false;
-            io.emit('timer:sync', TIMER_STATE);
+        if (league.biddingActive) {
+            startHostTimer(hostId, 30);
         }
 
-        io.emit('player:bid', { ...data, price: validPrice, highBidderId: STATE.activeBidders[key], teamName: team ? team.name : 'Admin' });
+        const bidPayload = { ...data, price: validPrice, highBidderId: league.activeBidders[key], teamName: team ? team.name : 'Admin Desk' };
+        io.to(`host:${hostKey}`).emit('player:bid', bidPayload);
+
+        if (hostKey === 'admin') {
+            if (!STATE.activeBids) STATE.activeBids = {};
+            if (!STATE.activeBidders) STATE.activeBidders = {};
+            STATE.activeBids[key] = validPrice;
+            STATE.activeBidders[key] = league.activeBidders[key];
+            if (STATE.currentActivePlayer && STATE.currentActivePlayer.name === data.name) {
+                STATE.currentActivePlayer.currentPrice = validPrice;
+                if (data.teamId && data.teamId !== 'ADMIN') {
+                    STATE.currentActivePlayer.adminAdjusted = false;
+                }
+            }
+            io.emit('player:bid', bidPayload);
+        }
         
         // AUTO-SELL CHECK:
         // If a team who has NOT bought anything from this category bids for this player,
         // AND this player is the last remaining player in this category (or unfulfilled teams <= 1):
         if (data.teamId && team && !team.purchases?.[data.category]) {
             const categoryId = data.category;
-            const categoryPlayers = (STATE.playersSnapshot[categoryId] || []);
+            const categoryPlayers = (league.playersSnapshot?.[categoryId] || []);
             const soldInCat = new Set();
-            STATE.teams.forEach(t => {
+            (league.teams || []).forEach(t => {
                 if (t.purchases && t.purchases[categoryId]) {
                     soldInCat.add(t.purchases[categoryId]);
                 }
             });
             const unacquiredCount = categoryPlayers.filter(p => !soldInCat.has(p.name)).length;
-            const unfulfilledTeamsForCat = STATE.teams.filter(t => !t.purchases?.[categoryId]);
+            const unfulfilledTeamsForCat = (league.teams || []).filter(t => !t.purchases?.[categoryId]);
 
             const isLastPlayerInCategory = unacquiredCount <= 1;
             const isSingleUnfulfilledTeam = unfulfilledTeamsForCat.length <= 1;
@@ -868,9 +1566,11 @@ io.on('connection', (socket) => {
                     teamId: data.teamId,
                     isDirect: false,
                     isRTM: false
-                });
+                }, hostId);
                 if (soldSuccess) {
-                    io.emit('admin:toast', { msg: `⚡ AUTO-SOLD: ${data.name} to ${team.name} @ ৳${validPrice}!` });
+                    const toastMsg = `⚡ AUTO-SOLD: ${data.name} to ${team.name} @ ৳${validPrice}!`;
+                    io.to(`host:${hostKey}`).emit('admin:toast', { msg: toastMsg });
+                    if (hostKey === 'admin') io.emit('admin:toast', { msg: toastMsg });
                     return;
                 }
             }
@@ -884,7 +1584,8 @@ io.on('connection', (socket) => {
             socket.emit('admin:toast', { msg: '❌ Only admin can mark player sold' });
             return;
         }
-        executeSale(data); 
+        const hostId = socket.data.hostId || 'admin';
+        executeSale(data, hostId); 
     });
 
     // --- RTM Phase 1: Team Sets Price + Match High Bidder ---
@@ -947,116 +1648,154 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('admin:setTeamLogo', ({ teamId, logoUrl }) => {
+    socket.on('admin:setTeamLogo', async ({ teamId, logoUrl }) => {
         if (!teamId || !logoUrl) return;
-        const team = STATE.teams.find(t => t.id === teamId);
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const team = (targetLeague.teams || []).find(t => t.id === teamId);
         if (!team) return;
         team.logo = logoUrl;
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            const adminTeam = (STATE.teams || []).find(t => t.id === teamId);
+            if (adminTeam) adminTeam.logo = logoUrl;
+        }
+        broadcastLeagueUpdate(hostId, targetLeague);
+        await immediateSaveToFirebase();
     });
 
-    socket.on('players:save', ({ category, players }) => {
+    socket.on('players:save', async ({ category, players }) => {
         if (!category || !Array.isArray(players)) return;
-        if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
-        STATE.playersSnapshot[category] = players;
-        STATE.lotteryQueue = (STATE.lotteryQueue || []).map(qp => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+
+        if (!targetLeague.playersSnapshot) targetLeague.playersSnapshot = {};
+        targetLeague.playersSnapshot[category] = players;
+        targetLeague.lotteryQueue = (targetLeague.lotteryQueue || []).map(qp => {
             if (qp.category !== category) return qp;
             const updated = players.find(p => p.name === qp.name);
             return updated ? { ...qp, image: updated.image, name: updated.name, base: qp.base } : qp;
         });
 
-        if (STATE.currentActivePlayer && STATE.currentActivePlayer.category === category) {
-            const updatedActive = players.find(p => p.name === STATE.currentActivePlayer.name);
+        if (targetLeague.currentActivePlayer && targetLeague.currentActivePlayer.category === category) {
+            const updatedActive = players.find(p => p.name === targetLeague.currentActivePlayer.name);
             if (updatedActive) {
-                STATE.currentActivePlayer = { ...STATE.currentActivePlayer, ...updatedActive, image: updatedActive.image || STATE.currentActivePlayer.image };
-                io.emit('popup:update_image', { imageUrl: STATE.currentActivePlayer.image });
+                targetLeague.currentActivePlayer = { ...targetLeague.currentActivePlayer, ...updatedActive, image: updatedActive.image || targetLeague.currentActivePlayer.image };
+                io.to(`host:${hostId.toLowerCase()}`).emit('popup:update_image', { imageUrl: targetLeague.currentActivePlayer.image });
             }
         }
 
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.playersSnapshot = targetLeague.playersSnapshot;
+            STATE.lotteryQueue = targetLeague.lotteryQueue;
+            STATE.currentActivePlayer = targetLeague.currentActivePlayer;
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        await immediateSaveToFirebase();
     });
 
-    socket.on('players:clear', ({ category }) => {
+    socket.on('players:clear', async ({ category }) => {
         if (!category) return;
-        if (!STATE.playersSnapshot) STATE.playersSnapshot = {};
-        STATE.playersSnapshot[category] = [];
-        STATE.lotteryQueue = (STATE.lotteryQueue || []).filter(p => p.category !== category);
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+
+        if (!targetLeague.playersSnapshot) targetLeague.playersSnapshot = {};
+        targetLeague.playersSnapshot[category] = [];
+        targetLeague.lotteryQueue = (targetLeague.lotteryQueue || []).filter(p => p.category !== category);
+
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.playersSnapshot = targetLeague.playersSnapshot;
+            STATE.lotteryQueue = targetLeague.lotteryQueue;
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        await immediateSaveToFirebase();
     });
 
-    socket.on('admin:deleteCategory', ({ id }) => {
+    socket.on('admin:deleteCategory', async ({ id }) => {
         if (!id) return;
-        STATE.categories = (STATE.categories || []).filter(c => c.id !== id);
-        if (STATE.playersSnapshot) delete STATE.playersSnapshot[id];
-        STATE.lotteryQueue = (STATE.lotteryQueue || []).filter(p => p.category !== id);
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+
+        targetLeague.categories = (targetLeague.categories || []).filter(c => c.id !== id);
+        if (targetLeague.playersSnapshot) delete targetLeague.playersSnapshot[id];
+        targetLeague.lotteryQueue = (targetLeague.lotteryQueue || []).filter(p => p.category !== id);
+
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.categories = targetLeague.categories;
+            if (STATE.playersSnapshot) delete STATE.playersSnapshot[id];
+            STATE.lotteryQueue = targetLeague.lotteryQueue;
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `Category ${id} deleted` });
+        await immediateSaveToFirebase();
     });
 
-    socket.on('admin:move_player_category', ({ sourceCategory, targetCategory, playerName }) => {
+    socket.on('admin:move_player_category', async ({ sourceCategory, targetCategory, playerName }) => {
         if (!sourceCategory || !targetCategory || !playerName || sourceCategory === targetCategory) return;
-        if (!STATE.playersSnapshot[sourceCategory] || !STATE.playersSnapshot[targetCategory]) return;
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+
+        if (!targetLeague.playersSnapshot || !targetLeague.playersSnapshot[sourceCategory] || !targetLeague.playersSnapshot[targetCategory]) return;
         
-        const index = STATE.playersSnapshot[sourceCategory].findIndex(p => p.name === playerName);
+        const index = targetLeague.playersSnapshot[sourceCategory].findIndex(p => p.name === playerName);
         if (index === -1) return;
         
-        const targetCatObj = (STATE.categories || []).find(c => c.id === targetCategory);
+        const targetCatObj = (targetLeague.categories || []).find(c => c.id === targetCategory);
         const targetBasePrice = Number(targetCatObj?.base) || 0;
         const targetIncrement = Number(targetCatObj?.increment) || 0;
 
-        const [movedPlayer] = STATE.playersSnapshot[sourceCategory].splice(index, 1);
+        const [movedPlayer] = targetLeague.playersSnapshot[sourceCategory].splice(index, 1);
         movedPlayer.category = targetCategory;
         if (targetCatObj) {
             movedPlayer.base = targetBasePrice;
             movedPlayer.price = targetBasePrice;
             movedPlayer.increment = targetIncrement;
         }
-        STATE.playersSnapshot[targetCategory].push(movedPlayer);
+        targetLeague.playersSnapshot[targetCategory].push(movedPlayer);
 
         const oldKey = `${sourceCategory}:${playerName}`;
         const newKey = `${targetCategory}:${playerName}`;
 
-        if (STATE.previousOwners && STATE.previousOwners[oldKey]) {
-            STATE.previousOwners[newKey] = STATE.previousOwners[oldKey];
-            delete STATE.previousOwners[oldKey];
+        if (targetLeague.previousOwners && targetLeague.previousOwners[oldKey]) {
+            targetLeague.previousOwners[newKey] = targetLeague.previousOwners[oldKey];
+            delete targetLeague.previousOwners[oldKey];
         }
-        if (STATE.activeBids) {
-            STATE.activeBids[newKey] = targetBasePrice;
-            delete STATE.activeBids[oldKey];
+        if (targetLeague.activeBids) {
+            targetLeague.activeBids[newKey] = targetBasePrice;
+            delete targetLeague.activeBids[oldKey];
         }
-        if (STATE.activeBidders && STATE.activeBidders[oldKey]) {
-            STATE.activeBidders[newKey] = STATE.activeBidders[oldKey];
-            delete STATE.activeBidders[oldKey];
+        if (targetLeague.activeBidders && targetLeague.activeBidders[oldKey]) {
+            targetLeague.activeBidders[newKey] = targetLeague.activeBidders[oldKey];
+            delete targetLeague.activeBidders[oldKey];
         }
-        if (STATE.soldPrices && STATE.soldPrices[oldKey] !== undefined) {
-            STATE.soldPrices[newKey] = targetBasePrice;
-            delete STATE.soldPrices[oldKey];
+        if (targetLeague.soldPrices && targetLeague.soldPrices[oldKey] !== undefined) {
+            targetLeague.soldPrices[newKey] = targetBasePrice;
+            delete targetLeague.soldPrices[oldKey];
         }
-        if (STATE.directSigns && STATE.directSigns[oldKey]) {
-            STATE.directSigns[newKey] = true;
-            delete STATE.directSigns[oldKey];
+        if (targetLeague.directSigns && targetLeague.directSigns[oldKey]) {
+            targetLeague.directSigns[newKey] = true;
+            delete targetLeague.directSigns[oldKey];
         }
-        if (STATE.rtmEvents && STATE.rtmEvents[oldKey]) {
-            STATE.rtmEvents[newKey] = true;
-            delete STATE.rtmEvents[oldKey];
+        if (targetLeague.rtmEvents && targetLeague.rtmEvents[oldKey]) {
+            targetLeague.rtmEvents[newKey] = true;
+            delete targetLeague.rtmEvents[oldKey];
         }
-        if (STATE.unsoldPlayers && STATE.unsoldPlayers[oldKey]) {
-            STATE.unsoldPlayers[newKey] = true;
-            delete STATE.unsoldPlayers[oldKey];
+        if (targetLeague.unsoldPlayers && targetLeague.unsoldPlayers[oldKey]) {
+            targetLeague.unsoldPlayers[newKey] = true;
+            delete targetLeague.unsoldPlayers[oldKey];
         }
 
-        STATE.teams.forEach(t => {
+        (targetLeague.teams || []).forEach(t => {
             if (t.purchases && t.purchases[sourceCategory] === playerName) {
                 delete t.purchases[sourceCategory];
                 t.purchases[targetCategory] = playerName;
             }
         });
 
-        if (STATE.lotteryQueue && Array.isArray(STATE.lotteryQueue)) {
-            STATE.lotteryQueue.forEach(qp => {
+        if (targetLeague.lotteryQueue && Array.isArray(targetLeague.lotteryQueue)) {
+            targetLeague.lotteryQueue.forEach(qp => {
                 if (qp.category === sourceCategory && qp.name === playerName) {
                     qp.category = targetCategory;
                     if (targetCatObj) qp.base = targetBasePrice;
@@ -1064,23 +1803,41 @@ io.on('connection', (socket) => {
             });
         }
 
-        if (STATE.currentActivePlayer && STATE.currentActivePlayer.category === sourceCategory && STATE.currentActivePlayer.name === playerName) {
-            STATE.currentActivePlayer.category = targetCategory;
+        if (targetLeague.currentActivePlayer && targetLeague.currentActivePlayer.category === sourceCategory && targetLeague.currentActivePlayer.name === playerName) {
+            targetLeague.currentActivePlayer.category = targetCategory;
             if (targetCatObj) {
-                STATE.currentActivePlayer.base = targetBasePrice;
-                STATE.currentActivePlayer.currentPrice = targetBasePrice;
+                targetLeague.currentActivePlayer.base = targetBasePrice;
+                targetLeague.currentActivePlayer.currentPrice = targetBasePrice;
             }
         }
 
-        io.emit('state:updated', publicState(STATE));
-        io.emit('admin:toast', { msg: `🚚 Moved ${playerName} to ${targetCategory} (Base: ৳${targetBasePrice}, Step: ৳${targetIncrement})` });
-        immediateSaveToFirebase();
+        if (hostId.toLowerCase() === 'admin') {
+            STATE.playersSnapshot = targetLeague.playersSnapshot;
+            STATE.categories = targetLeague.categories;
+            STATE.teams = targetLeague.teams;
+            STATE.soldPrices = targetLeague.soldPrices;
+            STATE.activeBids = targetLeague.activeBids;
+            STATE.activeBidders = targetLeague.activeBidders;
+            STATE.previousOwners = targetLeague.previousOwners;
+            STATE.directSigns = targetLeague.directSigns;
+            STATE.rtmEvents = targetLeague.rtmEvents;
+            STATE.unsoldPlayers = targetLeague.unsoldPlayers;
+            STATE.lotteryQueue = targetLeague.lotteryQueue;
+            STATE.currentActivePlayer = targetLeague.currentActivePlayer;
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${hostId.toLowerCase()}`).emit('admin:toast', { msg: `🚚 Moved ${playerName} to ${targetCategory} (Base: ৳${targetBasePrice}, Step: ৳${targetIncrement})` });
+        await immediateSaveToFirebase();
     });
 
-    socket.on('admin:updateConfig', (newConfig) => {
+    socket.on('admin:updateConfig', async (newConfig) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+
         if (newConfig.teams && Array.isArray(newConfig.teams)) {
-            STATE.teams = newConfig.teams.map(nt => {
-                const ot = (STATE.teams || []).find(t => t.id === nt.id); 
+            targetLeague.teams = newConfig.teams.map(nt => {
+                const ot = (targetLeague.teams || []).find(t => t.id === nt.id); 
                 return { 
                     ...nt, 
                     purchases: (nt.purchases !== undefined) ? nt.purchases : (ot && ot.purchases ? ot.purchases : {}),
@@ -1088,43 +1845,313 @@ io.on('connection', (socket) => {
                     rtmUsed: (nt.rtmUsed !== undefined) ? nt.rtmUsed : (ot ? ot.rtmUsed : false)
                 };
             });
+            if (hostId.toLowerCase() === 'admin') {
+                STATE.teams = targetLeague.teams;
+            }
         }
         if (newConfig.impactAmount !== undefined) {
-            if (!STATE.config) STATE.config = {};
-            STATE.config.impactAmount = Number(newConfig.impactAmount) || 0;
+            if (!targetLeague.config) targetLeague.config = {};
+            targetLeague.config.impactAmount = Number(newConfig.impactAmount) || 0;
+            if (hostId.toLowerCase() === 'admin') {
+                if (!STATE.config) STATE.config = {};
+                STATE.config.impactAmount = targetLeague.config.impactAmount;
+            }
         }
-        if (newConfig.categories) STATE.categories = newConfig.categories;
-        if (newConfig.previousOwners !== undefined) STATE.previousOwners = newConfig.previousOwners;
-        io.emit('state:updated', publicState(STATE));
-        immediateSaveToFirebase();
+        if (newConfig.categories && Array.isArray(newConfig.categories)) {
+            targetLeague.categories = newConfig.categories;
+            if (hostId.toLowerCase() === 'admin') {
+                STATE.categories = targetLeague.categories;
+            }
+        }
+        if (newConfig.previousOwners !== undefined) {
+            targetLeague.previousOwners = newConfig.previousOwners;
+            if (hostId.toLowerCase() === 'admin') {
+                STATE.previousOwners = targetLeague.previousOwners;
+            }
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        await immediateSaveToFirebase();
     });
 
-    socket.on('admin:resetAll', () => { 
-        STATE.activeBids = {}; STATE.activeBidders = {}; STATE.previousOwners = {}; STATE.soldPrices = {}; STATE.directSigns = {}; STATE.rtmEvents = {}; STATE.rtmImpactLocks = {}; STATE.rtmState = null; STATE.currentActivePlayer = null;
-        STATE.lotteryQueue = []; STATE.unsoldPlayers = {}; STATE.biddingActive = false; STATE.codeShuffleActive = false;
+    socket.on('admin:resetAll', async () => { 
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+
+        // 1. Gather all players to permanently purge from Firebase Storage
+        const allPlayers = [];
+        if (targetLeague.playersSnapshot) {
+            Object.values(targetLeague.playersSnapshot).forEach(list => {
+                if (Array.isArray(list)) allPlayers.push(...list);
+            });
+        }
+        if (targetLeague.currentActivePlayer) allPlayers.push(targetLeague.currentActivePlayer);
+        if (Array.isArray(targetLeague.lotteryQueue)) allPlayers.push(...targetLeague.lotteryQueue);
+
+        // 2. Permanently delete player image files from Firebase Cloud Storage
+        await deletePlayersFromFirebaseStorage(allPlayers);
+
+        // 3. Reset all players, queues, bids, sales from target league
+        targetLeague.playersSnapshot = {};
+        targetLeague.lotteryQueue = []; 
+        targetLeague.unsoldPlayers = {}; 
+        targetLeague.activeBids = {}; 
+        targetLeague.activeBidders = {}; 
+        targetLeague.previousOwners = {}; 
+        targetLeague.soldPrices = {}; 
+        targetLeague.directSigns = {}; 
+        targetLeague.rtmEvents = {}; 
+        targetLeague.rtmImpactLocks = {}; 
+        targetLeague.rtmState = null; 
+        targetLeague.currentActivePlayer = null;
+        targetLeague.pickedPlayerCode = null;
+        targetLeague.biddingActive = false; 
+        targetLeague.codeShuffleActive = false;
+
+        // 4. Reset franchise purses and clear all roster purchases
+        if (targetLeague.teams && Array.isArray(targetLeague.teams)) {
+            targetLeague.teams.forEach(t => { 
+                t.purse = 500; 
+                t.purchases = {}; 
+                t.impactUsed = false; 
+                t.impactActive = false; 
+                t.directSignUsed = false; 
+                t.rtmUsed = false; 
+            });
+        }
+
+        // 5. Also sync default STATE if admin
+        if (hostId === 'admin') {
+            STATE.playersSnapshot = {};
+            STATE.lotteryQueue = [];
+            STATE.unsoldPlayers = {};
+            STATE.currentActivePlayer = null;
+            STATE.pickedPlayerCode = null;
+            STATE.activeBids = {};
+            STATE.activeBidders = {};
+            STATE.previousOwners = {};
+            STATE.soldPrices = {};
+            STATE.directSigns = {};
+            STATE.rtmEvents = {};
+            STATE.rtmImpactLocks = {};
+            STATE.rtmState = null;
+            STATE.biddingActive = false;
+            STATE.codeShuffleActive = false;
+            if (STATE.teams && Array.isArray(STATE.teams)) {
+                STATE.teams.forEach(t => { 
+                    t.purse = 500; 
+                    t.purchases = {}; 
+                    t.impactUsed = false; 
+                    t.impactActive = false; 
+                    t.directSignUsed = false; 
+                    t.rtmUsed = false; 
+                });
+            }
+        }
+
+        // 6. Delete standalone player documents from Firestore if collection exists
+        if (db) {
+            try {
+                const playersCol = db.collection('players');
+                const snap = await playersCol.get();
+                if (!snap.empty) {
+                    const batch = db.batch();
+                    snap.docs.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                    console.log(`[Firestore] Master Reset: Deleted ${snap.docs.length} standalone player documents`);
+                }
+            } catch (e) {
+                console.warn("[Firestore] Standalone players collection note:", e.message);
+            }
+        }
+
         TIMER_STATE = { paused: false, time: 30 };
         clearInterval(serverTimerInterval);
-        STATE.teams.forEach(t => { t.purse = 500; t.purchases = {}; t.impactUsed = false; t.impactActive = false; t.directSignUsed = false; t.rtmUsed = false; }); 
-        io.emit('popup:close');
-        io.emit('timer:sync', TIMER_STATE);
-        io.emit('rtm:cleared');
-        io.emit('state:updated', publicState(STATE)); io.emit('admin:toast', { msg: `System Full Reset` }); immediateSaveToFirebase(); 
+
+        const canonicalHost = (hostId || 'admin').toLowerCase();
+        io.to(`host:${canonicalHost}`).emit('popup:close');
+        io.to(`host:${canonicalHost}`).emit('timer:sync', TIMER_STATE);
+        io.to(`host:${canonicalHost}`).emit('rtm:cleared');
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${canonicalHost}`).emit('admin:toast', { msg: `🚨 Master Reset: All players deleted from database & Firebase Storage` });
+
+        await immediateSaveToFirebase(); 
     });
 
-    socket.on('schedule:save', (scheduleData) => {
-        STATE.schedule = scheduleData || { teamNumbers: {}, matches: [] };
-        io.emit('state:updated', publicState(STATE));
-        io.emit('schedule:updated', STATE.schedule);
-        io.emit('admin:toast', { msg: 'Tournament schedule updated & published!' });
-        immediateSaveToFirebase();
+    socket.on('admin:clear_all_players', async () => {
+        if (socket.data.role !== 'admin') return;
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const canonicalHost = (hostId || 'admin').toLowerCase();
+
+        // 1. Gather all players to permanently purge from Firebase Storage
+        const allPlayers = [];
+        if (targetLeague.playersSnapshot) {
+            Object.values(targetLeague.playersSnapshot).forEach(list => {
+                if (Array.isArray(list)) allPlayers.push(...list);
+            });
+        }
+        if (targetLeague.currentActivePlayer) allPlayers.push(targetLeague.currentActivePlayer);
+        if (Array.isArray(targetLeague.lotteryQueue)) allPlayers.push(...targetLeague.lotteryQueue);
+
+        // 2. Permanently delete player image files from Firebase Cloud Storage
+        await deletePlayersFromFirebaseStorage(allPlayers);
+
+        // 3. Purge all players, queues, bids, sales from target league
+        targetLeague.playersSnapshot = {};
+        targetLeague.lotteryQueue = [];
+        targetLeague.unsoldPlayers = {};
+        targetLeague.currentActivePlayer = null;
+        targetLeague.pickedPlayerCode = null;
+        targetLeague.activeBids = {};
+        targetLeague.activeBidders = {};
+        targetLeague.soldPrices = {};
+        targetLeague.previousOwners = {};
+        targetLeague.directSigns = {};
+        targetLeague.rtmEvents = {};
+        targetLeague.rtmImpactLocks = {};
+        targetLeague.rtmState = null;
+        targetLeague.biddingActive = false;
+        targetLeague.codeShuffleActive = false;
+
+        // 4. Remove all player purchases from team rosters
+        if (targetLeague.teams && Array.isArray(targetLeague.teams)) {
+            targetLeague.teams.forEach(t => {
+                t.purchases = {};
+            });
+        }
+
+        // 5. Also sync default STATE if admin
+        if (canonicalHost === 'admin') {
+            STATE.playersSnapshot = {};
+            STATE.lotteryQueue = [];
+            STATE.unsoldPlayers = {};
+            STATE.currentActivePlayer = null;
+            STATE.pickedPlayerCode = null;
+            STATE.activeBids = {};
+            STATE.activeBidders = {};
+            STATE.soldPrices = {};
+            STATE.previousOwners = {};
+            STATE.directSigns = {};
+            STATE.rtmEvents = {};
+            STATE.rtmImpactLocks = {};
+            STATE.rtmState = null;
+            STATE.biddingActive = false;
+            STATE.codeShuffleActive = false;
+            if (STATE.teams && Array.isArray(STATE.teams)) {
+                STATE.teams.forEach(t => {
+                    t.purchases = {};
+                });
+            }
+        }
+
+        // 6. Delete standalone player documents from Firestore if collection exists
+        if (db) {
+            try {
+                const playersCol = db.collection('players');
+                const snap = await playersCol.get();
+                if (!snap.empty) {
+                    const batch = db.batch();
+                    snap.docs.forEach(doc => batch.delete(doc.ref));
+                    await batch.commit();
+                    console.log(`[Firestore] Deleted ${snap.docs.length} standalone player documents`);
+                }
+            } catch (e) {
+                console.warn("[Firestore] Standalone players collection note:", e.message);
+            }
+        }
+
+        io.to(`host:${canonicalHost}`).emit('popup:close');
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${canonicalHost}`).emit('admin:toast', { msg: `🗑️ All players permanently deleted (including Firebase Storage)` });
+        await immediateSaveToFirebase();
     });
 
-    socket.on('schedule:reset', () => {
-        STATE.schedule = { teamNumbers: {}, matches: [] };
-        io.emit('state:updated', publicState(STATE));
-        io.emit('schedule:updated', STATE.schedule);
-        io.emit('admin:toast', { msg: 'Tournament schedule reset' });
-        immediateSaveToFirebase();
+    socket.on('admin:deletePlayer', async ({ category, name }) => {
+        if (socket.data.role !== 'admin') return;
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const canonicalHost = (hostId || 'admin').toLowerCase();
+        
+        let deletedPlayer = null;
+        if (targetLeague.playersSnapshot && Array.isArray(targetLeague.playersSnapshot[category])) {
+            const idx = targetLeague.playersSnapshot[category].findIndex(p => p.name === name);
+            if (idx !== -1) {
+                [deletedPlayer] = targetLeague.playersSnapshot[category].splice(idx, 1);
+            }
+        }
+
+        if (deletedPlayer) {
+            await deletePlayersFromFirebaseStorage([deletedPlayer]);
+        }
+
+        const key = `${category}:${name}`;
+        if (targetLeague.soldPrices) delete targetLeague.soldPrices[key];
+        if (targetLeague.activeBids) delete targetLeague.activeBids[key];
+        if (targetLeague.activeBidders) delete targetLeague.activeBidders[key];
+        if (targetLeague.previousOwners) delete targetLeague.previousOwners[key];
+        if (targetLeague.directSigns) delete targetLeague.directSigns[key];
+        if (targetLeague.rtmEvents) delete targetLeague.rtmEvents[key];
+        if (targetLeague.unsoldPlayers) delete targetLeague.unsoldPlayers[key];
+        if (targetLeague.rtmImpactLocks) delete targetLeague.rtmImpactLocks[key];
+        targetLeague.lotteryQueue = (targetLeague.lotteryQueue || []).filter(p => !(p.category === category && p.name === name));
+        if (targetLeague.currentActivePlayer && targetLeague.currentActivePlayer.name === name) {
+            targetLeague.currentActivePlayer = null;
+            io.to(`host:${canonicalHost}`).emit('popup:close');
+        }
+
+        // Remove from team purchases
+        (targetLeague.teams || []).forEach(t => {
+            if (t.purchases && t.purchases[category] === name) {
+                delete t.purchases[category];
+            }
+        });
+
+        if (canonicalHost === 'admin') {
+            if (STATE.playersSnapshot && Array.isArray(STATE.playersSnapshot[category])) {
+                STATE.playersSnapshot[category] = STATE.playersSnapshot[category].filter(p => p.name !== name);
+            }
+            if (STATE.soldPrices) delete STATE.soldPrices[key];
+            if (STATE.activeBids) delete STATE.activeBids[key];
+            if (STATE.activeBidders) delete STATE.activeBidders[key];
+            (STATE.teams || []).forEach(t => {
+                if (t.purchases && t.purchases[category] === name) {
+                    delete t.purchases[category];
+                }
+            });
+        }
+
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${canonicalHost}`).emit('admin:toast', { msg: `🗑️ Player "${name}" deleted from database & storage` });
+        await immediateSaveToFirebase();
+    });
+
+    socket.on('schedule:save', async (scheduleData) => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const canonicalHost = (hostId || 'admin').toLowerCase();
+        targetLeague.schedule = scheduleData || { teamNumbers: {}, matches: [] };
+        if (canonicalHost === 'admin') {
+            STATE.schedule = targetLeague.schedule;
+        }
+        io.to(`host:${canonicalHost}`).emit('schedule:updated', targetLeague.schedule);
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${canonicalHost}`).emit('admin:toast', { msg: 'Tournament schedule updated & published!' });
+        await immediateSaveToFirebase();
+    });
+
+    socket.on('schedule:reset', async () => {
+        const hostId = socket.data.hostId || 'admin';
+        const targetLeague = getLeague(hostId);
+        const canonicalHost = (hostId || 'admin').toLowerCase();
+        targetLeague.schedule = { teamNumbers: {}, matches: [] };
+        if (canonicalHost === 'admin') {
+            STATE.schedule = targetLeague.schedule;
+        }
+        io.to(`host:${canonicalHost}`).emit('schedule:updated', targetLeague.schedule);
+        broadcastLeagueUpdate(hostId, targetLeague);
+        io.to(`host:${canonicalHost}`).emit('admin:toast', { msg: 'Tournament schedule reset' });
+        await immediateSaveToFirebase();
     });
 });
 
